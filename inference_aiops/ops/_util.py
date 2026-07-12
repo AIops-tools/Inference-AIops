@@ -1,0 +1,60 @@
+"""Shared helpers for Inference ops modules.
+
+Reads come from two shapes: Ray dashboard JSON (dicts/arrays) and vLLM
+Prometheus metrics (parsed into ``{name: [{labels, value}]}`` by the connection
+layer). ``metric_sum`` / ``metric_latest`` / ``histogram_avg`` pull scalar
+signals out of the parsed metric map. All server text reaches the caller only
+after ``sanitize()`` (prompt-injection defense).
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from inference_aiops.governance import sanitize
+
+
+def as_list(data: Any) -> list[dict]:
+    """Normalise a list payload (bare array or ``{"data": [...]}``) to a list of dicts."""
+    if isinstance(data, dict):
+        items = data.get("data", data.get("applications", []))
+    else:
+        items = data
+    if isinstance(items, dict):  # Ray Serve returns applications as a name→obj map
+        items = list(items.values())
+    return [i for i in (items or []) if isinstance(i, dict)]
+
+
+def as_obj(data: Any) -> dict:
+    """Return ``data`` as a dict (empty dict if it isn't one)."""
+    return data if isinstance(data, dict) else {}
+
+
+def s(value: Any, limit: int = 256) -> str:
+    """Sanitize an arbitrary value to a bounded, injection-safe string."""
+    return sanitize(str(value if value is not None else ""), limit)
+
+
+def metric_sum(metrics: dict[str, list[dict]], name: str) -> float | None:
+    """Sum all series values for a metric (None if absent)."""
+    series = metrics.get(name)
+    if not series:
+        return None
+    return round(sum(p.get("value", 0.0) for p in series), 4)
+
+
+def metric_latest(metrics: dict[str, list[dict]], name: str) -> float | None:
+    """Return the max series value for a gauge-like metric (None if absent)."""
+    series = metrics.get(name)
+    if not series:
+        return None
+    return max(p.get("value", 0.0) for p in series)
+
+
+def histogram_avg(metrics: dict[str, list[dict]], base: str) -> float | None:
+    """Average of a Prometheus histogram: ``<base>_sum`` / ``<base>_count``."""
+    total = metric_sum(metrics, f"{base}_sum")
+    count = metric_sum(metrics, f"{base}_count")
+    if not total or not count:
+        return None
+    return round(total / count, 4)

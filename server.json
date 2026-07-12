@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.AIops-tools/inference-aiops",
+  "title": "Inference AIops",
+  "description": "Governed GPU inference ops (vLLM + Ray Serve): latency RCA, scaling, drain, 30 tools.",
+  "repository": {
+    "url": "https://github.com/AIops-tools/Inference-AIops",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "inference-aiops",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
