@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from inference_aiops.ops._util import as_obj, s
+from inference_aiops.ops._util import _seg, as_obj, s
 
 _APPS = "/api/serve/applications/"
 
@@ -99,7 +99,7 @@ def get_autoscale_config(conn: Any, application: str, deployment: str) -> dict:
 def _set_replicas(conn: Any, application: str, deployment: str, num: int) -> dict:
     """PUT a new replica count, capturing the prior count for undo/audit."""
     prior = _find(conn, application, deployment).get("numReplicas")
-    conn.put_ray(f"{_APPS}{application}/deployments/{deployment}",
+    conn.put_ray(f"{_APPS}{_seg(application)}/deployments/{_seg(deployment)}",
                  json={"num_replicas": num})
     return {"application": s(application), "deployment": s(deployment),
             "numReplicas": num, "priorState": {"numReplicas": prior}}
@@ -136,7 +136,7 @@ def update_autoscale_config(
         body["max_replicas"] = max_replicas
     if target_ongoing_requests is not None:
         body["target_ongoing_requests"] = target_ongoing_requests
-    conn.put_ray(f"{_APPS}{application}/deployments/{deployment}/autoscale", json=body)
+    conn.put_ray(f"{_APPS}{_seg(application)}/deployments/{_seg(deployment)}/autoscale", json=body)
     return {"action": "update_autoscale_config", "application": s(application),
             "deployment": s(deployment), "applied": body,
             "priorState": {"minReplicas": prior.get("minReplicas"),
@@ -147,7 +147,8 @@ def update_autoscale_config(
 def drain_replica(conn: Any, application: str, deployment: str, replica_id: str) -> dict:
     """[WRITE][high] Gracefully drain one replica (finish in-flight, take no new)."""
     conn.post_ray(
-        f"{_APPS}{application}/deployments/{deployment}/replicas/{replica_id}/drain",
+        f"{_APPS}{_seg(application)}/deployments/{_seg(deployment)}"
+        f"/replicas/{_seg(replica_id)}/drain",
         json={},
     )
     return {"action": "drain_replica", "application": s(application),

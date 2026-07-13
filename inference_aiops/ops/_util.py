@@ -4,14 +4,28 @@ Reads come from two shapes: Ray dashboard JSON (dicts/arrays) and vLLM
 Prometheus metrics (parsed into ``{name: [{labels, value}]}`` by the connection
 layer). ``metric_sum`` / ``metric_latest`` / ``histogram_avg`` pull scalar
 signals out of the parsed metric map. All server text reaches the caller only
-after ``sanitize()`` (prompt-injection defense).
+after ``sanitize()`` (encoding-level output hygiene). ``_seg`` is the ONLY
+sanctioned way to place an agent-supplied identifier into a REST URL path
+segment — it percent-encodes everything (including ``/``) so an id like
+``../admin`` cannot rewrite the request path.
 """
 
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 from inference_aiops.governance import sanitize
+
+
+def _seg(value: Any) -> str:
+    """Percent-encode one URL *path segment* (agent-supplied identifier).
+
+    ``safe=""`` also encodes ``/``, so a hostile id (``../drain``, ``a/b``)
+    stays a single segment instead of rewriting the request path. Query-string
+    values are NOT routed through here — httpx ``params=`` handles those.
+    """
+    return quote(str(value), safe="")
 
 
 def as_list(data: Any) -> list[dict]:

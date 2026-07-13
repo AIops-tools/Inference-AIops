@@ -8,7 +8,7 @@ any external skill family — this package is its own copy of the harness:
     and undo-token recording.
   - unified SQLite audit log under ``~/.inference-aiops/`` (override with
     ``INFERENCE_AIOPS_HOME``).
-  - ``sanitize`` — prompt-injection defense for API-returned text.
+  - ``sanitize`` — encoding-level output hygiene for API-returned text.
 
 State lives under ``ops_home()`` (default ``~/.inference-aiops``).
 """

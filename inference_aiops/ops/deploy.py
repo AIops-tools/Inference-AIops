@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from inference_aiops.ops._util import as_obj, s
+from inference_aiops.ops._util import _seg, as_obj, s
 
 _APPS = "/api/serve/applications/"
 
@@ -41,13 +41,13 @@ def undeploy_model(conn: Any, application: str) -> dict:
             prior["routePrefix"] = s(app.get("route_prefix")) if app.get("route_prefix") else None
     except Exception:  # noqa: BLE001 — prior capture is best-effort, never block the write
         pass
-    conn.delete_ray(f"{_APPS}{application}")
+    conn.delete_ray(f"{_APPS}{_seg(application)}")
     return {"action": "model_undeploy", "application": s(application), "priorState": prior}
 
 
 def redeploy_deployment(conn: Any, application: str, deployment: str) -> dict:
     """[WRITE][high] Force a deployment to re-apply new config (can drop in-flight)."""
-    conn.put_ray(f"{_APPS}{application}/deployments/{deployment}/redeploy", json={})
+    conn.put_ray(f"{_APPS}{_seg(application)}/deployments/{_seg(deployment)}/redeploy", json={})
     return {"action": "deployment_redeploy", "application": s(application),
             "deployment": s(deployment)}
 
@@ -69,7 +69,8 @@ def update_routing_policy(conn: Any, application: str, deployment: str, policy: 
         prior = _current_routing_policy(conn, application, deployment)
     except Exception:  # noqa: BLE001 — prior capture is best-effort
         prior = None
-    conn.put_ray(f"{_APPS}{application}/deployments/{deployment}/routing", json={"policy": policy})
+    conn.put_ray(f"{_APPS}{_seg(application)}/deployments/{_seg(deployment)}/routing",
+                 json={"policy": policy})
     return {"action": "routing_policy_update", "application": s(application),
             "deployment": s(deployment), "policy": s(policy),
             "priorState": {"policy": s(prior) if prior is not None else None}}

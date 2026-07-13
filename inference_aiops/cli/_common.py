@@ -5,10 +5,14 @@ from __future__ import annotations
 import functools
 from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 from rich.console import Console
+
+if TYPE_CHECKING:
+    from inference_aiops.config import AppConfig
+    from inference_aiops.connection import InferenceConnection
 
 console = Console()
 
@@ -48,7 +52,9 @@ def cli_errors(fn: Callable) -> Callable:
     return wrapper
 
 
-def get_connection(target: str | None, config_path: Path | None = None):
+def get_connection(
+    target: str | None, config_path: Path | None = None
+) -> tuple[InferenceConnection, AppConfig]:
     """Return a (conn, config) tuple for the given target."""
     from inference_aiops.config import load_config
     from inference_aiops.connection import ConnectionManager
