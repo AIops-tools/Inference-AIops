@@ -57,7 +57,7 @@ def serve_scale(
     dry_run: DryRunOption = False,
 ) -> None:
     """Scale a deployment to a target replica count."""
-    from inference_aiops.ops import serve as ops
+    from mcp_server.tools import serve as gov
 
     if dry_run:
         dry_run_print(operation="scale_replicas",
@@ -65,9 +65,9 @@ def serve_scale(
                                f"{deployment}",
                       parameters={"num_replicas": num_replicas})
         return
-    conn, _ = get_connection(target)
-    result = ops.scale_replicas_up(conn, application, deployment, num_replicas)
-    console.print_json(json.dumps(result))
+    console.print_json(json.dumps(gov.scale_replicas_up(
+        application=application, deployment=deployment,
+        num_replicas=num_replicas, target=target)))
 
 
 @serve_app.command("scale-to-zero")
@@ -77,7 +77,7 @@ def serve_scale_zero(
     target: TargetOption = None, dry_run: DryRunOption = False,
 ) -> None:
     """Park a deployment at 0 replicas (dry-run + double confirm)."""
-    from inference_aiops.ops import serve as ops
+    from mcp_server.tools import serve as gov
 
     if dry_run:
         dry_run_print(operation="scale_to_zero",
@@ -86,5 +86,5 @@ def serve_scale_zero(
                       parameters={"num_replicas": 0})
         return
     double_confirm("scale to zero", f"{application}/{deployment}")
-    conn, _ = get_connection(target)
-    console.print_json(json.dumps(ops.scale_to_zero(conn, application, deployment)))
+    console.print_json(json.dumps(gov.scale_to_zero(
+        application=application, deployment=deployment, target=target)))
