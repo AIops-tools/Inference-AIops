@@ -85,6 +85,7 @@ inference-aiops doctor     # probes the Ray dashboard and vLLM independently
 ### Safely scale down / scale-to-zero a prod deployment
 
 1. Set an approver: `export INFERENCE_AUDIT_APPROVED_BY=you INFERENCE_AUDIT_RATIONALE="off-peak cost save"`.
+- **Secure by default (v0.2.0+)**: with no `~/.inference-aiops/rules.yaml`, high/critical operations are denied unless `INFERENCE_AUDIT_APPROVED_BY` names an approver (set `INFERENCE_AUDIT_RATIONALE` too). `inference-aiops init` seeds a starter rules.yaml; an operator-authored rules file is honoured as-is.
 2. `inference-aiops serve scale-to-zero <app> <deployment> --dry-run` → preview the call (double-confirm required). `scale_to_zero` stops the cost bleed but **strands ingress** — confirm that's intended.
 3. Re-run without `--dry-run`; the undo descriptor captures the prior replica count so you can restore it with `scale_replicas_up`.
 
