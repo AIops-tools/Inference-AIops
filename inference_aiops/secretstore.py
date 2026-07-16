@@ -39,9 +39,11 @@ from cryptography.exceptions import InvalidKey
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
+from inference_aiops.governance.paths import ops_home
+
 # ─── Tool-specific constants (change these three to vendor for another tool) ──
 APP_NAME = "inference-aiops"
-CONFIG_DIR = Path.home() / ".inference-aiops"
+CONFIG_DIR = ops_home()
 MASTER_PASSWORD_ENV = "INFERENCE_AIOPS_MASTER_PASSWORD"  # nosec B105 — env-var name
 # ──────────────────────────────────────────────────────────────────────────────
 
