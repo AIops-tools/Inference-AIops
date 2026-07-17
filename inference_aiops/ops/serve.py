@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from inference_aiops.ops._util import _seg, as_obj, s
+from inference_aiops.ops.engine import require_control_plane
 
 _APPS = "/api/serve/applications/"
 
@@ -98,6 +99,7 @@ def get_autoscale_config(conn: Any, application: str, deployment: str) -> dict:
 
 def _set_replicas(conn: Any, application: str, deployment: str, num: int) -> dict:
     """PUT a new replica count, capturing the prior count for undo/audit."""
+    require_control_plane(conn, "scale_replicas")
     prior = _find(conn, application, deployment).get("numReplicas")
     conn.put_ray(f"{_APPS}{_seg(application)}/deployments/{_seg(deployment)}",
                  json={"num_replicas": num})
@@ -128,6 +130,7 @@ def update_autoscale_config(
     target_ongoing_requests: float | None = None,
 ) -> dict:
     """[WRITE] Live-tune autoscale bounds (reversible → prior config)."""
+    require_control_plane(conn, "update_autoscale_config")
     prior = get_autoscale_config(conn, application, deployment)
     body: dict[str, Any] = {}
     if min_replicas is not None:
@@ -146,6 +149,7 @@ def update_autoscale_config(
 
 def drain_replica(conn: Any, application: str, deployment: str, replica_id: str) -> dict:
     """[WRITE][high] Gracefully drain one replica (finish in-flight, take no new)."""
+    require_control_plane(conn, "drain_replica")
     conn.post_ray(
         f"{_APPS}{_seg(application)}/deployments/{_seg(deployment)}"
         f"/replicas/{_seg(replica_id)}/drain",

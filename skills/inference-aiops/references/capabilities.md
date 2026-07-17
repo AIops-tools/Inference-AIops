@@ -1,11 +1,13 @@
 # inference-aiops capabilities
 
-> Preview / mock-only. 30 MCP tools (16 read, 14 write). Backends: **vLLM**
-> (OpenAI API + Prometheus `/metrics`, default port 8000) and **Ray** dashboard
-> (Serve + Jobs, default port 8265). Endpoints modelled against those APIs; need
-> live verification.
+> Preview / mock-only. 35 MCP tools (21 read, 14 write). Serving engines:
+> **vLLM** (OpenAI API + Prometheus `/metrics`, default 8000) with its **Ray**
+> dashboard control plane (Serve + Jobs, default 8265), plus the single-process
+> engines **SGLang** (OpenAI API + `/get_server_info` + Prometheus `/metrics`,
+> default 30000) and **TGI** (`/info` + Prometheus `/metrics`, default 8080).
+> Endpoints modelled against those APIs; need live verification.
 
-## Metrics & RCA (read, 5)
+## Metrics & RCA — vLLM (read, 5)
 
 | Tool | Backend | Endpoint | Returns |
 |------|---------|----------|---------|
@@ -14,6 +16,21 @@
 | `kv_cache_stats` | vLLM | `GET /metrics` | KV-cache utilisation %, prefix-cache hit rate, preemption count |
 | `diagnose_latency_spike` | vLLM | `GET /metrics` (fold) | **ranked cause** (queue backpressure / KV-cache preemption / prefix-cache locality) + the specific knob to turn |
 | `diagnose_low_utilization` | vLLM | `GET /metrics` (fold) | idle-GPU / over-provisioned / routing-stranded diagnosis + what to scale down |
+
+## Engine-agnostic — vLLM / SGLang / TGI (read, 5)
+
+Work against **any** supported engine, reading each engine's own paths and metric
+names (vLLM `vllm:*`, SGLang `sglang:*`, TGI `tgi_*`). A signal an engine does not
+expose (e.g. TGI has no TTFT or KV-cache metric) degrades to `null` rather than
+being guessed.
+
+| Tool | Endpoint(s) | Returns |
+|------|-------------|---------|
+| `engine_health` | `GET /health` | engine liveness (`healthy` bool) + engine label |
+| `engine_inventory` | `GET /v1/models` (vLLM/SGLang) or `/info` (TGI); `/get_server_info` (SGLang) | running-model id(s) + best-effort server info (model, version, max concurrency) |
+| `engine_request_metrics` | `GET /metrics` | TTFT / TPOT / e2e latency + generation-token totals, per engine's exposition (null where unexposed) |
+| `engine_queue_depth` | `GET /metrics` | running vs waiting requests + backpressure flag (SGLang `num_queue_reqs`, TGI `tgi_queue_size`) |
+| `diagnose_engine_latency` | `GET /metrics` (fold) | **ranked cause** across the signals the engine exposes (queue backpressure / KV-token-cache pressure / cache locality) + the knob to turn |
 
 ## Ray Serve — read (4)
 
@@ -69,6 +86,15 @@
 | Tool | Backend | Endpoint | Returns |
 |------|---------|----------|---------|
 | `cost_per_token` | vLLM | `GET /metrics` + GPU $/hr | deterministic $/1M tokens from measured throughput × GPU hourly rate |
+
+## SGLang / TGI writes (control-plane teaching error)
+
+SGLang and TGI are **single-process servers** with no Ray Serve control plane, so
+the Ray-shaped write groups above (scale / drain / autoscale / deploy / redeploy /
+routing / job-cancel / replica-restart) do not apply to them. Attempting one
+against a SGLang/TGI target raises `EngineCapabilityError` with a teaching message
+pointing at a real horizontal-scale layer (Ray Serve / Kubernetes / a load
+balancer). Their supported surface is the **engine-agnostic read** group above.
 
 ## Out of scope (by design)
 

@@ -5,12 +5,22 @@
 > **Disclaimer**: Community-maintained open-source project. **Not affiliated with, endorsed by, or sponsored by the vLLM or Ray projects or any inference-serving vendor.** Product and trademark names belong to their owners. MIT licensed.
 
 Governed AI-ops for **GPU inference clusters** — **vLLM** (OpenAI API + Prometheus
-`/metrics`) and **Ray Serve / Ray Jobs** (Ray dashboard) — with a **built-in
-governance harness**: unified audit log, policy engine, token/runaway budget
-guard, undo-token recording, and graduated-autonomy risk tiers. It parses
-vLLM's Prometheus `/metrics` directly (no Prometheus server required) and probes
-the Ray dashboard independently. A bearer token is **optional** (many stacks run
-open). **Preview — mock-validated only, not yet verified against a live cluster.**
+`/metrics`) and **Ray Serve / Ray Jobs** (Ray dashboard), plus the single-process
+serving engines **SGLang** and **TGI (Text Generation Inference)** — with a
+**built-in governance harness**: unified audit log, policy engine, token/runaway
+budget guard, undo-token recording, and graduated-autonomy risk tiers. It parses
+each engine's Prometheus `/metrics` directly (no Prometheus server required) and
+probes the Ray dashboard independently. A bearer token is **optional** (many
+stacks run open). **Preview — mock-validated only, not yet verified against a
+live cluster.**
+
+**Serving engines.** vLLM is the flagship (full Ray Serve control plane: scale,
+drain, autoscale, LoRA, hot-swap). **SGLang** and **TGI** are supported for
+engine-agnostic observability — health, running-model identity, request-latency
+metrics, queue depth, and latency RCA — read from each engine's own endpoints and
+metric names. Being single-process servers, they have no Ray-shaped scale/drain
+API: those writes return a teaching error pointing you at a real horizontal-scale
+layer (Ray Serve / Kubernetes / a load balancer).
 
 ## What it does
 
@@ -32,11 +42,12 @@ The flagship value is **root-cause analysis**, wrapped in guarded reads and writ
 - **Laptop self-test** — ~80% of the tool self-tests free: vLLM on a single GPU
   or CPU-mock + Ray in one local container (`ray start --head`).
 
-## Capability matrix (30 MCP tools)
+## Capability matrix (35 MCP tools)
 
 | Group | Tools | Count | R/W (risk) |
 |-------|-------|:-----:|:-----------|
-| **Metrics & RCA** | `request_metrics`, `queue_depth`, `kv_cache_stats`, `diagnose_latency_spike`, `diagnose_low_utilization` | 5 | read |
+| **Metrics & RCA** (vLLM) | `request_metrics`, `queue_depth`, `kv_cache_stats`, `diagnose_latency_spike`, `diagnose_low_utilization` | 5 | read |
+| **Engine-agnostic** (vLLM / SGLang / TGI) | `engine_health`, `engine_inventory`, `engine_request_metrics`, `engine_queue_depth`, `diagnose_engine_latency` | 5 | read |
 | **Ray Serve (read)** | `serve_deployment_list`, `deployment_status`, `replica_list`, `autoscale_config_get` | 4 | read |
 | **Ray Serve (write)** | `scale_replicas_up`, `scale_replicas_down`, `scale_to_zero`, `autoscale_config_update`, `drain_replica` | 5 | write (med / **high**) |
 | **Models / vLLM** | `model_list`, `model_info`, `lora_load`, `lora_unload`, `model_hot_swap` | 5 | read + write (med / **high**) |
@@ -44,7 +55,12 @@ The flagship value is **root-cause analysis**, wrapped in guarded reads and writ
 | **Deploy lifecycle** | `model_deploy`, `model_undeploy`, `deployment_redeploy`, `routing_policy_update` | 4 | write (med / **high**) |
 | **Cost** | `cost_per_token` | 1 | read |
 
-**16 read, 14 write.** High-risk writes (`scale_replicas_down`,
+The engine-agnostic group works against **any** supported engine (including
+vLLM); use it for SGLang/TGI targets or a uniform view across a mixed fleet. The
+Ray Serve / cluster / deploy write groups are vLLM-only (Ray control plane) — they
+teach-and-refuse on a SGLang/TGI target.
+
+**21 read, 14 write.** High-risk writes (`scale_replicas_down`,
 `scale_to_zero`, `drain_replica`, `lora_unload`, `model_hot_swap`,
 `replica_restart`, `model_undeploy`, `deployment_redeploy`) all support
 `dry_run` + double-confirm; reversible writes record an undo descriptor.
@@ -58,14 +74,14 @@ uv tool install inference-aiops          # or: pipx install inference-aiops
 ## Quick start
 
 ```bash
-inference-aiops init                     # wizard: host + ray_port + vllm_port + scheme
-inference-aiops doctor                   # probes BOTH the Ray dashboard and vLLM independently
+inference-aiops init                     # wizard: engine (vllm/sglang/tgi) + host + port + scheme
+inference-aiops doctor                   # vLLM: probes Ray + vLLM; SGLang/TGI: engine health + inventory
 inference-aiops overview                 # deployments + total replicas + queue backpressure
 inference-aiops metrics diagnose         # why is inference slow? ranked RCA + the knob to turn
 inference-aiops serve list               # Ray Serve deployments + replica counts
 ```
 
-Run as an MCP server (stdio) for the full 30-tool surface:
+Run as an MCP server (stdio) for the full 35-tool surface:
 
 ```bash
 export INFERENCE_AIOPS_MASTER_PASSWORD=...   # only if a bearer token is stored
@@ -73,7 +89,7 @@ inference-aiops mcp
 ```
 
 The CLI is a convenience subset (`init`, `overview`, `serve …`, `metrics …`,
-`secret …`, `doctor`, `mcp`); the full 30 tools are exposed via the MCP server.
+`secret …`, `doctor`, `mcp`); the full 35 tools are exposed via the MCP server.
 
 ## Governance
 

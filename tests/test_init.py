@@ -27,18 +27,21 @@ runner = CliRunner()
 
 BEARER_TOKEN = "bearer-secret-123"  # noqa: S105 — test fixture value
 
-# Prompt order: name, host, ray_port(default), vllm_port(default),
-# token confirm(default=False), add-another(No), doctor(No).
-WIZARD_INPUT_NO_TOKEN = "prod\ngpu.example.com\n\n\n\n\nn\n"
+# Prompt order (vLLM): name, engine(default vllm), host, vLLM port(default),
+# ray_port(default), token confirm(default=False), add-another(No), doctor(No).
+WIZARD_INPUT_NO_TOKEN = "prod\n\ngpu.example.com\n\n\n\n\nn\n"
 # Same, but answer Yes at the token confirm ([getpass patched] supplies it).
-WIZARD_INPUT_WITH_TOKEN = "prod\ngpu.example.com\n\n\ny\n\nn\n"
+WIZARD_INPUT_WITH_TOKEN = "prod\n\ngpu.example.com\n\n\ny\n\nn\n"
+# SGLang: name, engine(sglang), host, SGLang port(default), token(No), add(No), doctor(No).
+WIZARD_INPUT_SGLANG = "sg\nsglang\nsg.example.com\n\n\n\nn\n"
 
 EXPECTED_ENTRY = {
     "name": "prod",
     "host": "gpu.example.com",
+    "engine": "vllm",
+    "scheme": "http",
     "ray_port": 8265,
     "vllm_port": 8000,
-    "scheme": "http",
 }
 
 
@@ -90,7 +93,7 @@ def test_init_does_not_clobber_existing_rules(isolated_home, hidden_token):
 
 def test_init_appends_to_existing_targets(isolated_home, hidden_token):
     assert runner.invoke(app, ["init"], input=WIZARD_INPUT_NO_TOKEN).exit_code == 0
-    result = runner.invoke(app, ["init"], input="lab\ngpu2.example.com\n\n\n\n\nn\n")
+    result = runner.invoke(app, ["init"], input="lab\n\ngpu2.example.com\n\n\n\n\nn\n")
     assert result.exit_code == 0, result.output
     raw = yaml.safe_load((isolated_home / "config.yaml").read_text("utf-8"))
     assert [t["name"] for t in raw["targets"]] == ["prod", "lab"]
@@ -98,12 +101,34 @@ def test_init_appends_to_existing_targets(isolated_home, hidden_token):
 
 def test_init_overwrites_target_on_confirm(isolated_home, hidden_token):
     assert runner.invoke(app, ["init"], input=WIZARD_INPUT_NO_TOKEN).exit_code == 0
-    # Re-add 'prod': confirm the overwrite, change the host.
-    result = runner.invoke(app, ["init"], input="prod\ny\nnew-gpu.example.com\n\n\n\n\nn\n")
+    # Re-add 'prod': confirm the overwrite, accept vllm, change the host.
+    result = runner.invoke(app, ["init"], input="prod\ny\n\nnew-gpu.example.com\n\n\n\n\nn\n")
     assert result.exit_code == 0, result.output
     raw = yaml.safe_load((isolated_home / "config.yaml").read_text("utf-8"))
     assert len(raw["targets"]) == 1
     assert raw["targets"][0]["host"] == "new-gpu.example.com"
+
+
+def test_init_sglang_writes_engine_and_engine_port(isolated_home, hidden_token):
+    """A single-process engine (SGLang) records engine + engine_port, no Ray port."""
+    result = runner.invoke(app, ["init"], input=WIZARD_INPUT_SGLANG)
+    assert result.exit_code == 0, result.output
+    raw = yaml.safe_load((isolated_home / "config.yaml").read_text("utf-8"))
+    entry = raw["targets"][0]
+    assert entry["engine"] == "sglang"
+    assert entry["engine_port"] == 30000
+    assert entry["host"] == "sg.example.com"
+    assert "ray_port" not in entry and "vllm_port" not in entry
+
+
+def test_init_tgi_uses_default_port(isolated_home, hidden_token):
+    """TGI default port is 8080 and no Ray dashboard is configured."""
+    result = runner.invoke(app, ["init"], input="edge\ntgi\ntgi.example.com\n\n\n\nn\n")
+    assert result.exit_code == 0, result.output
+    entry = yaml.safe_load((isolated_home / "config.yaml").read_text("utf-8"))["targets"][0]
+    assert entry["engine"] == "tgi"
+    assert entry["engine_port"] == 8080
+    assert "ray_port" not in entry
 
 
 def test_init_runs_doctor_when_accepted(isolated_home, hidden_token, monkeypatch):
@@ -117,6 +142,6 @@ def test_init_runs_doctor_when_accepted(isolated_home, hidden_token, monkeypatch
 
     monkeypatch.setattr(doc, "run_doctor", fake_doctor)
     # Accept the trailing doctor confirm (default=True) with a blank line.
-    result = runner.invoke(app, ["init"], input="prod\ngpu.example.com\n\n\n\n\n\n")
+    result = runner.invoke(app, ["init"], input="prod\n\ngpu.example.com\n\n\n\n\n\n")
     assert result.exit_code == 0, result.output
     assert calls == [True]

@@ -30,13 +30,27 @@ from inference_aiops.config import AppConfig, TargetConfig, load_config
 _TIMEOUT = 30.0
 
 
+# Display labels for each engine, used in teaching error messages.
+_ENGINE_LABELS = {"vllm": "vLLM", "sglang": "SGLang", "tgi": "TGI"}
+
+
 class InferenceApiError(Exception):
-    """A Ray/vLLM call failed; carries a teaching message + status code."""
+    """A Ray/engine call failed; carries a teaching message + status code."""
 
     def __init__(self, message: str, *, status_code: int | None = None, path: str = "") -> None:
         self.status_code = status_code
         self.path = path
         super().__init__(message)
+
+
+class EngineCapabilityError(InferenceApiError):
+    """A requested operation is not supported by the target's serving engine.
+
+    Raised, e.g., when a Ray-shaped scale/drain write is attempted against a
+    single-process engine (SGLang / TGI) that has no such control plane. It
+    subclasses :class:`InferenceApiError` so the CLI/MCP error layers already
+    surface it as a clean teaching message rather than a traceback.
+    """
 
 
 def _teaching_message(status: int, path: str, body: str, backend: str) -> str:
@@ -168,6 +182,23 @@ class InferenceConnection:
     def vllm_metrics(self) -> dict[str, list[dict]]:
         """Fetch and parse the vLLM Prometheus ``/metrics`` endpoint."""
         resp = self._request("GET", f"{self._target.vllm_url}/metrics", "/metrics", "vLLM")
+        return parse_prometheus(resp.text or "")
+
+    # ── engine-agnostic surface (vLLM / SGLang / TGI) ────────────────────
+    @property
+    def _engine_label(self) -> str:
+        return _ENGINE_LABELS.get(self._target.engine, self._target.engine or "engine")
+
+    def get_engine(self, path: str, **kwargs: Any) -> Any:
+        """GET a JSON path on the target's serving engine (any engine)."""
+        url = f"{self._target.engine_url}{path}"
+        return self._json(self._request("GET", url, path, self._engine_label, **kwargs))
+
+    def engine_metrics(self) -> dict[str, list[dict]]:
+        """Fetch and parse the engine's Prometheus ``/metrics`` endpoint."""
+        resp = self._request(
+            "GET", f"{self._target.engine_url}/metrics", "/metrics", self._engine_label
+        )
         return parse_prometheus(resp.text or "")
 
     def close(self) -> None:

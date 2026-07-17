@@ -17,12 +17,14 @@ from __future__ import annotations
 from typing import Any
 
 from inference_aiops.ops._util import _seg, as_obj, s
+from inference_aiops.ops.engine import require_control_plane
 
 _APPS = "/api/serve/applications/"
 
 
 def deploy_model(conn: Any, application: str, import_path: str, num_replicas: int = 1) -> dict:
     """[WRITE] Deploy a Serve application from an import path (create/replace)."""
+    require_control_plane(conn, "model_deploy")
     conn.put_ray(
         _APPS,
         json={"name": application, "import_path": import_path, "num_replicas": num_replicas},
@@ -32,6 +34,7 @@ def deploy_model(conn: Any, application: str, import_path: str, num_replicas: in
 
 def undeploy_model(conn: Any, application: str) -> dict:
     """[WRITE][high] Tear down a whole Serve application (best-effort prior capture)."""
+    require_control_plane(conn, "model_undeploy")
     prior: dict[str, Any] = {"application": s(application)}
     try:
         apps = as_obj(conn.get_ray(_APPS)).get("applications", {}) or {}
@@ -47,6 +50,7 @@ def undeploy_model(conn: Any, application: str) -> dict:
 
 def redeploy_deployment(conn: Any, application: str, deployment: str) -> dict:
     """[WRITE][high] Force a deployment to re-apply new config (can drop in-flight)."""
+    require_control_plane(conn, "deployment_redeploy")
     conn.put_ray(f"{_APPS}{_seg(application)}/deployments/{_seg(deployment)}/redeploy", json={})
     return {"action": "deployment_redeploy", "application": s(application),
             "deployment": s(deployment)}
@@ -65,6 +69,7 @@ def update_routing_policy(conn: Any, application: str, deployment: str, policy: 
 
     ``policy`` is e.g. ``prefix_aware`` / ``round_robin`` / ``session_affinity``.
     """
+    require_control_plane(conn, "routing_policy_update")
     try:
         prior = _current_routing_policy(conn, application, deployment)
     except Exception:  # noqa: BLE001 — prior capture is best-effort

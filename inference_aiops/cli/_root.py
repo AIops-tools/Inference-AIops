@@ -11,6 +11,7 @@ from inference_aiops.cli.metrics import metrics_app
 from inference_aiops.cli.overview import overview_cmd
 from inference_aiops.cli.secret import secret_app
 from inference_aiops.cli.serve import serve_app
+from inference_aiops.cli.undo import undo_app
 
 app = typer.Typer(
     name="inference-aiops",
@@ -22,6 +23,7 @@ app = typer.Typer(
 app.add_typer(serve_app, name="serve")
 app.add_typer(metrics_app, name="metrics")
 app.add_typer(secret_app, name="secret")
+app.add_typer(undo_app, name="undo")
 app.command("init")(init_cmd)
 app.command("overview")(overview_cmd)
 app.command("doctor")(doctor_cmd)

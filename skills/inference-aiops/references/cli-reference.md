@@ -1,17 +1,20 @@
 # inference-aiops CLI reference
 
-> Preview / mock-only. Backends are the Ray dashboard (Serve + Jobs, default
-> port 8265) and vLLM (OpenAI API + Prometheus `/metrics`, default port 8000);
-> endpoints need live verification.
+> Preview / mock-only. Serving engines: vLLM (OpenAI API + Prometheus `/metrics`,
+> default 8000) with its Ray dashboard control plane (Serve + Jobs, default 8265),
+> plus single-process SGLang (default 30000) and TGI (default 8080); endpoints
+> need live verification.
 >
-> The CLI is a convenience subset. The full 30-tool surface is via the MCP
-> server (`inference-aiops mcp`).
+> The CLI is a convenience subset. The full 35-tool surface — including the
+> engine-agnostic reads (`engine_health`, `engine_inventory`,
+> `engine_request_metrics`, `engine_queue_depth`, `diagnose_engine_latency`) that
+> cover SGLang/TGI — is via the MCP server (`inference-aiops mcp`).
 
 ## Setup & diagnostics
 
 ```bash
-inference-aiops init                      # interactive onboarding wizard
-inference-aiops doctor [--skip-auth]      # config + secret store + connectivity — probes the Ray dashboard AND vLLM independently
+inference-aiops init                      # interactive wizard: engine (vllm/sglang/tgi) + host + port
+inference-aiops doctor [--skip-auth]      # config + secret store + connectivity — vLLM: Ray + vLLM; SGLang/TGI: engine health + inventory
 inference-aiops mcp                       # start the MCP server (stdio transport)
 ```
 

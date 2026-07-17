@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from inference_aiops.ops._util import _seg, as_list, as_obj, s
+from inference_aiops.ops.engine import require_control_plane
 
 _CLUSTER = "/api/cluster_status"
 _APPS = "/api/serve/applications/"
@@ -140,12 +141,14 @@ def get_gpu_utilization(conn: Any) -> list[dict]:
 
 def cancel_job(conn: Any, job_id: str) -> dict:
     """[WRITE] Stop a submitted/running Ray job."""
+    require_control_plane(conn, "ray_job_cancel")
     conn.post_ray(f"{_JOBS}{_seg(job_id)}/stop", json={})
     return {"action": "ray_job_cancel", "jobId": s(job_id)}
 
 
 def restart_replica(conn: Any, application: str, deployment: str, replica_id: str) -> dict:
     """[WRITE][high] Restart one wedged Serve replica (kills + respawns the actor)."""
+    require_control_plane(conn, "replica_restart")
     conn.post_ray(
         f"{_APPS}{_seg(application)}/deployments/{_seg(deployment)}"
         f"/replicas/{_seg(replica_id)}/restart",

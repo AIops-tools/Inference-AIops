@@ -20,10 +20,12 @@ from mcp_server._shared import _safe_error, mcp, tool_errors
 from mcp_server.tools import (  # noqa: F401 — side effects
     cost,
     deploy,
+    engine,
     metrics,
     models,
     ray_cluster,
     serve,
+    undo,
 )
 
 __all__ = ["mcp", "main", "_safe_error", "tool_errors"]

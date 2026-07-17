@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.3.0 — 2026-07-17
+
+### Added
+- **New:** SGLang + TGI serving-engine platforms.
+- **Undo executor**: `undo list` / `undo apply <id>` (CLI + MCP) — apply a recorded replayable inverse; the dispatched inverse is re-gated by its own risk tier; single-use, dry-run, double-confirm, both wrapper + inverse audited.
+
+## Unreleased
+
+### Added
+- **SGLang and TGI serving engines** alongside vLLM + Ray. A target now declares an
+  `engine` (`vllm` / `sglang` / `tgi`); `init` prompts for it, and `doctor` probes the
+  right surface (vLLM: Ray + vLLM; SGLang/TGI: engine health + running-model inventory).
+- **5 engine-agnostic MCP reads** (now 35 tools, 21 read / 14 write): `engine_health`,
+  `engine_inventory`, `engine_request_metrics`, `engine_queue_depth`, and
+  `diagnose_engine_latency` — each reads the target engine's own health path,
+  running-model identity, and Prometheus `/metrics` (vLLM `vllm:*`, SGLang `sglang:*`,
+  TGI `tgi_*`); signals an engine does not expose degrade to `null`.
+- **Engine registry** (`inference_aiops.engines`) mapping each engine's paths + metric
+  names; config accepts `engine` + `engine_port` (default ports vLLM 8000 / SGLang 30000
+  / TGI 8080), validating the engine name at load.
+
+### Changed
+- The Ray-shaped write ops (scale / drain / autoscale / deploy / redeploy / routing /
+  job-cancel / replica-restart) now raise `EngineCapabilityError` — a teaching error —
+  when targeted at a single-process SGLang/TGI engine that has no control plane.
+
 ## v0.2.1 — 2026-07-16
 
 ### Fixed

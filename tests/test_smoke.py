@@ -33,6 +33,9 @@ EXPECTED_TOOLS = {
     "model_deploy", "model_undeploy", "deployment_redeploy", "routing_policy_update",
     # cost
     "cost_per_token",
+    # engine-agnostic (vLLM / SGLang / TGI)
+    "engine_health", "engine_inventory", "engine_request_metrics",
+    "engine_queue_depth", "diagnose_engine_latency",
 }
 
 
@@ -42,13 +45,15 @@ def test_all_modules_import():
         "inference_aiops", "inference_aiops.config", "inference_aiops.connection",
         "inference_aiops.doctor", "inference_aiops.secretstore",
         "inference_aiops.ops.metrics", "inference_aiops.ops.serve",
-        "inference_aiops.ops.overview",
+        "inference_aiops.ops.overview", "inference_aiops.ops.engine",
+        "inference_aiops.engines",
         "inference_aiops.cli", "inference_aiops.cli._root", "inference_aiops.cli._common",
         "inference_aiops.cli.init", "inference_aiops.cli.secret", "inference_aiops.cli.serve",
         "inference_aiops.cli.metrics", "inference_aiops.cli.overview",
         "inference_aiops.cli.doctor",
         "mcp_server.server", "mcp_server._shared",
         "mcp_server.tools.metrics", "mcp_server.tools.serve",
+        "mcp_server.tools.engine",
     ):
         importlib.import_module(name)
 

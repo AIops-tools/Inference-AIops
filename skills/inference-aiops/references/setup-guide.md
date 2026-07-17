@@ -22,20 +22,36 @@ inference-aiops init
 ```
 
 The wizard collects (non-secret) connection details into
-`~/.inference-aiops/config.yaml`: a **shared host**, the **Ray dashboard port**
-(default 8265), the **vLLM port** (default 8000), and the **scheme**
-(http/https). A bearer token is stored **encrypted** into
+`~/.inference-aiops/config.yaml`: the **serving engine** (`vllm` / `sglang` /
+`tgi`), a **host**, the engine's **port**, and the **scheme** (http/https). For
+the vLLM engine it also collects the **Ray dashboard port** (default 8265) — its
+control plane. A bearer token is stored **encrypted** into
 `~/.inference-aiops/secrets.enc` **only if the API requires one**. Example config:
 
 ```yaml
 targets:
-  - name: prod
+  - name: prod                 # vLLM + Ray Serve control plane
     host: 10.0.0.20
+    engine: vllm
     scheme: http
     ray_port: 8265
-    vllm_port: 8000
+    vllm_port: 8000            # vLLM engine port (legacy key; == engine_port)
     verify_ssl: false          # self-signed lab certs only
+  - name: sg                    # SGLang (single-process, no Ray)
+    host: 10.0.0.21
+    engine: sglang
+    engine_port: 30000         # SGLang default
+  - name: edge                  # TGI (single-process, no Ray)
+    host: 10.0.0.22
+    engine: tgi
+    engine_port: 8080          # TGI default
 ```
+
+Default engine ports: **vLLM 8000, SGLang 30000, TGI 8080**. `engine_port` (or the
+legacy `vllm_port`) sets the engine's HTTP port. Only the **vLLM** engine uses
+`ray_port`; SGLang and TGI are single-process servers with no Ray dashboard, so
+their scale/drain writes raise a teaching error rather than issuing an impossible
+control-plane call.
 
 ## 4. Non-interactive use (MCP server / CI / cron)
 
@@ -102,6 +118,7 @@ inference-aiops doctor
 ```
 
 `doctor` checks the config file, the encrypted store and its permissions (if a
-token is configured), and — unless `--skip-auth` — connectivity by probing the
-**Ray dashboard** and **vLLM** independently, so a half-up cluster is reported
-precisely.
+token is configured), and — unless `--skip-auth` — connectivity. For a **vLLM**
+target it probes the **Ray dashboard** and **vLLM** independently, so a half-up
+cluster is reported precisely; for a **SGLang / TGI** target it probes the
+engine's health endpoint and running-model inventory (no Ray).

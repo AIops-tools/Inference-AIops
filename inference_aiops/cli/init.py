@@ -15,7 +15,8 @@ import typer
 import yaml
 
 from inference_aiops.cli._common import cli_errors, console
-from inference_aiops.config import CONFIG_DIR, CONFIG_FILE, DEFAULT_RAY_PORT, DEFAULT_VLLM_PORT
+from inference_aiops.config import CONFIG_DIR, CONFIG_FILE, DEFAULT_RAY_PORT
+from inference_aiops.engines import DEFAULT_ENGINE_PORTS, SUPPORTED_ENGINES, get_engine_spec
 from inference_aiops.governance.paths import ops_path
 from inference_aiops.secretstore import SecretStore, resolve_master_password
 
@@ -77,9 +78,10 @@ def init_cmd() -> None:
     """Interactively set up your first Inference connection."""
     console.print("[bold cyan]Inference AIops — setup wizard[/]")
     console.print(
-        "This collects Ray dashboard + vLLM connection details (saved to "
-        "config.yaml). A bearer token is optional (many inference stacks run "
-        "open); if given it is saved [bold]encrypted[/] to secrets.enc.\n"
+        "This collects your serving engine's connection details (saved to "
+        "config.yaml). Supported engines: vLLM (+ Ray Serve), SGLang, TGI. A "
+        "bearer token is optional (many inference stacks run open); if given it "
+        "is saved [bold]encrypted[/] to secrets.enc.\n"
     )
 
     console.print("[bold]Step 1 — master password[/]")
@@ -101,21 +103,36 @@ def init_cmd() -> None:
                 continue
             targets = [t for t in targets if t.get("name") != name]
 
-        host = typer.prompt("Host (IP or FQDN, shared by Ray + vLLM)").strip()
-        ray_port = typer.prompt("Ray dashboard port", default=DEFAULT_RAY_PORT, type=int)
-        vllm_port = typer.prompt("vLLM port", default=DEFAULT_VLLM_PORT, type=int)
+        engine = typer.prompt(
+            f"Serving engine ({'/'.join(SUPPORTED_ENGINES)})", default="vllm"
+        ).strip().lower()
+        while engine not in SUPPORTED_ENGINES:
+            console.print(
+                f"[yellow]Unknown engine — choose one of: {', '.join(SUPPORTED_ENGINES)}[/]"
+            )
+            engine = typer.prompt(
+                f"Serving engine ({'/'.join(SUPPORTED_ENGINES)})", default="vllm"
+            ).strip().lower()
+        spec = get_engine_spec(engine)
+
+        host = typer.prompt("Host (IP or FQDN)").strip()
+        engine_port = typer.prompt(
+            f"{spec.label} port", default=DEFAULT_ENGINE_PORTS[engine], type=int
+        )
+
+        entry: dict = {"name": name, "host": host, "engine": engine, "scheme": "http"}
+        if engine == "vllm":
+            # vLLM's control plane is the Ray Serve/Jobs dashboard.
+            ray_port = typer.prompt("Ray dashboard port", default=DEFAULT_RAY_PORT, type=int)
+            entry["ray_port"] = ray_port
+            entry["vllm_port"] = engine_port
+        else:
+            # SGLang / TGI are single-process — no Ray dashboard.
+            entry["engine_port"] = engine_port
 
         if typer.confirm("Does the API require a bearer token?", default=False):
             secret = getpass.getpass(f"Token for '{name}' (hidden): ")
             store = store.set(name, secret)
-
-        entry = {
-            "name": name,
-            "host": host,
-            "ray_port": ray_port,
-            "vllm_port": vllm_port,
-            "scheme": "http",
-        }
         targets.append(entry)
         existing_names.add(name)
         _write_targets(targets)

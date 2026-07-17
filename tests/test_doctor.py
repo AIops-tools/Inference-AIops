@@ -194,3 +194,64 @@ def test_both_backends_down(isolated_home, doctor_out, fake_mgr):
     out = doctor_out.getvalue()
     assert "✗ Ray dashboard 'prod'" in out
     assert "✗ vLLM 'prod'" in out
+
+
+# ─── single-process engines (SGLang / TGI) — no Ray probe ───────────────────
+
+
+class _FakeEngineConn:
+    """Engine-branch conn: get_engine dispatches by path; no Ray involved."""
+
+    def __init__(self, responses: dict) -> None:
+        self._responses = responses
+
+    def get_engine(self, path: str, **_: Any) -> Any:
+        val = self._responses.get(path, {})
+        if isinstance(val, Exception):
+            raise val
+        return val
+
+
+class _EngineMgr:
+    results: dict[str, dict] = {}
+
+    def __init__(self, config: Any) -> None:
+        self._config = config
+
+    def connect(self, name: str) -> _FakeEngineConn:
+        return _FakeEngineConn(_EngineMgr.results[name])
+
+
+@pytest.fixture
+def engine_mgr(monkeypatch: pytest.MonkeyPatch) -> type[_EngineMgr]:
+    import inference_aiops.connection as conn_mod
+
+    _EngineMgr.results = {}
+    monkeypatch.setattr(conn_mod, "ConnectionManager", _EngineMgr)
+    return _EngineMgr
+
+
+SGLANG = {"name": "sg", "host": "sg.example.com", "engine": "sglang", "engine_port": 30000}
+
+
+def test_sglang_target_probes_engine_health_not_ray(isolated_home, doctor_out, engine_mgr):
+    _write_config(isolated_home, [SGLANG])
+    _seed_secret("sg", "bearer-tok")  # avoid the "no store" problem confounding the exit code
+    engine_mgr.results["sg"] = {
+        "/health": {},
+        "/get_server_info": {"model_path": "meta/llama-3-8b"},
+        "/v1/models": {"data": [{"id": "llama-3-8b"}]},
+    }
+    assert doc.run_doctor() == 0
+    out = doctor_out.getvalue()
+    assert "Ray dashboard" not in out
+    assert "✓ SGLang reachable (http://sg.example.com:30000)" in out
+    assert "✓ SGLang model(s): llama-3-8b" in out
+
+
+def test_sglang_target_unreachable_fails(isolated_home, doctor_out, engine_mgr):
+    _write_config(isolated_home, [SGLANG])
+    _seed_secret("sg", "bearer-tok")
+    engine_mgr.results["sg"] = {"/health": ConnectionError("connection refused")}
+    assert doc.run_doctor() == 1
+    assert "✗ SGLang 'sg'" in doctor_out.getvalue()
