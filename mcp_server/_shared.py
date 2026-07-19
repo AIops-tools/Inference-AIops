@@ -75,7 +75,7 @@ def tool_errors(shape: str = "dict") -> Callable:
 mcp = FastMCP(
     "inference-aiops",
     instructions=(
-        "GPU inference-cluster operations (preview) over vLLM + Ray Serve/Jobs, "
+        "GPU inference-cluster operations over vLLM + Ray Serve/Jobs, "
         "plus SGLang and TGI single-process engines: vLLM request metrics "
         "(TTFT/TPOT/queue depth/KV-cache) and the flagship 'diagnose_latency_spike' "
         "/ 'diagnose_low_utilization' RCA correlators; engine-agnostic reads "

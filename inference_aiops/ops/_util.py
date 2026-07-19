@@ -15,7 +15,7 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import quote
 
-from inference_aiops.governance import sanitize
+from inference_aiops.governance import opt_str, sanitize
 
 
 def _seg(value: Any) -> str:
@@ -47,6 +47,22 @@ def as_obj(data: Any) -> dict:
 def s(value: Any, limit: int = 256) -> str:
     """Sanitize an arbitrary value to a bounded, injection-safe string."""
     return sanitize(str(value if value is not None else ""), limit)
+
+
+def opt_s(value: Any, limit: int = 256) -> str | None:
+    """Sanitize a value that may legitimately be absent, preserving that absence.
+
+    Companion to :func:`s`, which folds ``None`` into ``""``. That conflation is
+    invisible downstream: an empty string reads as "the engine reported this
+    field and it was blank" when the truth may be "this engine/Ray version never
+    reports the field". Neither a consumer nor a smaller local model can recover
+    the difference, and both tend to invent one.
+
+    Use this for any optional field (a job's ``entrypoint``, a model's ``parent``
+    adapter, a replica ``state``, a server-info ``version``); keep :func:`s` for
+    values that are always present, such as a map key already in hand.
+    """
+    return opt_str(value, limit)
 
 
 def metric_sum(metrics: dict[str, list[dict]], name: str) -> float | None:

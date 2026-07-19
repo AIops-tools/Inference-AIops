@@ -40,13 +40,18 @@ def ray_dashboard_status(target: Optional[str] = None) -> dict:
 @mcp.tool()
 @governed_tool(risk_level="low")
 @tool_errors("dict")
-def ray_job_list(target: Optional[str] = None) -> list:
+def ray_job_list(target: Optional[str] = None, limit: int = 100) -> dict:
     """[READ] Submitted Ray jobs: id, status, entrypoint, start time.
+
+    Returns ``{"jobs": [...], "returned": N, "limit": L, "truncated": bool}``.
+    When ``truncated`` is true there are more jobs than were returned — re-run
+    with a higher limit rather than treating the result as the whole history.
 
     Args:
         target: Inference target name from config; omit for the default.
+        limit: Maximum job rows to return. Default 100.
     """
-    return ops.list_jobs(_get_connection(target))
+    return ops.list_jobs(_get_connection(target), limit=limit)
 
 
 @mcp.tool()

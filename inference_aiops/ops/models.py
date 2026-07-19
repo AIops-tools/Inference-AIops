@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from inference_aiops.ops._util import as_list, s
+from inference_aiops.ops._util import as_list, opt_s, s
 
 _MODELS = "/v1/models"
 _LOAD_LORA = "/v1/load_lora_adapter"
@@ -24,14 +24,14 @@ _HOT_SWAP = "/v1/hot_swap"
 
 def _normalize_model(entry: dict) -> dict:
     """Flatten one ``/v1/models`` row, flagging LoRA adapters."""
-    model_id = s(entry.get("id"))
+    model_id = opt_s(entry.get("id"))
     root = entry.get("root")
     parent = entry.get("parent")
-    is_lora = parent is not None or (root is not None and s(root) != model_id)
+    is_lora = parent is not None or (root is not None and opt_s(root) != model_id)
     return {
         "id": model_id,
-        "object": s(entry.get("object")),
-        "ownedBy": s(entry.get("owned_by")),
+        "object": opt_s(entry.get("object")),
+        "ownedBy": opt_s(entry.get("owned_by")),
         "isLora": bool(is_lora),
     }
 
@@ -51,12 +51,12 @@ def get_model_info(conn: Any, model_id: str) -> dict:
     except Exception as exc:  # noqa: BLE001 — report as partial
         return {"error": s(exc, 200)}
     for entry in rows:
-        if s(entry.get("id")) == s(model_id):
+        if opt_s(entry.get("id")) == s(model_id):
             return {
-                "id": s(entry.get("id")),
+                "id": opt_s(entry.get("id")),
                 "maxModelLen": entry.get("max_model_len"),
-                "root": s(entry.get("root")) if entry.get("root") is not None else None,
-                "parent": s(entry.get("parent")) if entry.get("parent") is not None else None,
+                "root": opt_s(entry.get("root")),
+                "parent": opt_s(entry.get("parent")),
                 "permission": entry.get("permission"),
             }
     return {"error": s(f"Model '{model_id}' not found — list_models first.", 200)}
@@ -82,7 +82,7 @@ def hot_swap_model(conn: Any, new_model: str) -> dict:
     prior = None
     rows = as_list(conn.get_vllm(_MODELS))
     if rows:
-        prior = s(rows[0].get("id"))
+        prior = opt_s(rows[0].get("id"))
     conn.post_vllm(_HOT_SWAP, json={"model": new_model})
     return {"action": "model_hot_swap", "newModel": s(new_model),
             "priorState": {"model": prior}}

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from inference_aiops.ops._util import _seg, as_obj, s
+from inference_aiops.ops._util import _seg, as_obj, opt_s, s
 from inference_aiops.ops.engine import require_control_plane
 
 _APPS = "/api/serve/applications/"
@@ -34,10 +34,10 @@ def _iter_deployments(apps: dict) -> list[dict]:
             rows.append({
                 "application": s(app_name),
                 "deployment": s(dep_name),
-                "status": s(dep.get("status")),
+                "status": opt_s(dep.get("status")),
                 "numReplicas": len(replicas) if replicas else cfg.get("num_replicas"),
                 "targetReplicas": cfg.get("num_replicas"),
-                "replicaStates": [s((r or {}).get("state")) for r in replicas
+                "replicaStates": [opt_s((r or {}).get("state")) for r in replicas
                                   if isinstance(r, dict)],
             })
     return rows

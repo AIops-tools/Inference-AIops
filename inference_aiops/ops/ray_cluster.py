@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from inference_aiops.ops._util import _seg, as_list, as_obj, s
+from inference_aiops.ops._util import _seg, as_list, as_obj, opt_s, s
 from inference_aiops.ops.engine import require_control_plane
 
 _CLUSTER = "/api/cluster_status"
@@ -62,7 +62,7 @@ def get_dashboard_status(conn: Any) -> dict:
         return {"error": s(exc, 200)}
     applications = apps.get("applications", {})
     applications = applications if isinstance(applications, dict) else {}
-    statuses = [s((app or {}).get("status")) for app in applications.values()
+    statuses = [opt_s((app or {}).get("status")) for app in applications.values()
                 if isinstance(app, dict)]
     deployment_count = sum(
         len((app or {}).get("deployments", {}) or {})
@@ -83,19 +83,39 @@ def get_dashboard_status(conn: Any) -> dict:
 
 def _job_row(job: dict) -> dict:
     return {
-        "jobId": s(job.get("job_id") or job.get("submission_id") or job.get("jobId")),
-        "status": s(job.get("status")),
-        "entrypoint": s(job.get("entrypoint")),
+        "jobId": opt_s(job.get("job_id") or job.get("submission_id") or job.get("jobId")),
+        "status": opt_s(job.get("status")),
+        "entrypoint": opt_s(job.get("entrypoint")),
         "startTime": job.get("start_time") or job.get("startTime"),
     }
 
 
-def list_jobs(conn: Any) -> list[dict]:
-    """[READ] Submitted Ray jobs: id, status, entrypoint, start time."""
+def list_jobs(conn: Any, limit: int = 100) -> dict:
+    """[READ] Submitted Ray jobs: id, status, entrypoint, start time.
+
+    A long-lived Ray cluster accumulates thousands of finished jobs, so the list
+    is capped by ``limit`` and the cap announces itself::
+
+        {"jobs": [...], "returned": 100, "limit": 100, "truncated": true}
+
+    A bare list cannot say "there is more" — the consumer has to infer it from
+    the length happening to equal the limit, and a smaller local model reads that
+    coincidence as "that is every job". One row past the limit is kept while
+    slicing so ``truncated`` is *measured* rather than guessed.
+    """
+    requested = int(limit)
     try:
-        return [_job_row(job) for job in as_list(conn.get_ray(_JOBS))]
+        raw = as_list(conn.get_ray(_JOBS))
     except Exception as exc:  # noqa: BLE001 — report as partial
-        return [{"error": s(exc, 200)}]
+        return {"error": s(exc, 200)}
+    truncated = len(raw) > requested
+    jobs = [_job_row(job) for job in raw[:requested]]
+    return {
+        "jobs": jobs,
+        "returned": len(jobs),
+        "limit": requested,
+        "truncated": truncated,
+    }
 
 
 def _gpu_row(node: dict) -> dict:
@@ -110,7 +130,7 @@ def _gpu_row(node: dict) -> dict:
                     if isinstance(g.get("memoryTotal"), (int, float))) or None
     raylet = as_obj(node.get("raylet"))
     return {
-        "nodeId": s(node.get("nodeId") or raylet.get("nodeId") or node.get("ip")),
+        "nodeId": opt_s(node.get("nodeId") or raylet.get("nodeId") or node.get("ip")),
         "gpuCount": len(gpus),
         "gpuUtilPercent": util,
         "gpuMemUsedBytes": mem_used,

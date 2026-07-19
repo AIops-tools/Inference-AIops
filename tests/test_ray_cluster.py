@@ -22,7 +22,9 @@ def test_ray_job_list_normalizes_payload():
         {"submission_id": "raysubmit_02", "status": "SUCCEEDED",
          "entrypoint": "python train.py", "startTime": 1700000100},
     ]
-    rows = ops.list_jobs(conn)
+    out = ops.list_jobs(conn)
+    assert out["returned"] == 2 and out["limit"] == 100 and out["truncated"] is False
+    rows = out["jobs"]
     assert rows[0] == {"jobId": "01", "status": "RUNNING",
                        "entrypoint": "python serve.py", "startTime": 1700000000}
     assert rows[1]["jobId"] == "raysubmit_02"

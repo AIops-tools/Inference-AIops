@@ -1,6 +1,6 @@
 # inference-aiops capabilities
 
-> Preview / mock-only. 35 MCP tools (21 read, 14 write). Serving engines:
+> 37 MCP tools (21 read, 14 write, 2 undo). Serving engines:
 > **vLLM** (OpenAI API + Prometheus `/metrics`, default 8000) with its **Ray**
 > dashboard control plane (Serve + Jobs, default 8265), plus the single-process
 > engines **SGLang** (OpenAI API + `/get_server_info` + Prometheus `/metrics`,

@@ -21,7 +21,15 @@ from typing import Any
 
 from inference_aiops.connection import EngineCapabilityError
 from inference_aiops.engines import EngineSpec, get_engine_spec
-from inference_aiops.ops._util import as_list, as_obj, histogram_avg, metric_latest, metric_sum, s
+from inference_aiops.ops._util import (
+    as_list,
+    as_obj,
+    histogram_avg,
+    metric_latest,
+    metric_sum,
+    opt_s,
+    s,
+)
 
 # Engine names known to lack a Ray Serve control plane (single-process servers).
 _SINGLE_PROCESS_ENGINES = frozenset({"sglang", "tgi"})
@@ -112,9 +120,8 @@ def engine_inventory(conn: Any) -> dict:
         "label": spec.label,
         "models": models,
         "serverInfo": {
-            "model": s(info.get("model_path") or info.get("model_id"))
-            if (info.get("model_path") or info.get("model_id")) else None,
-            "version": s(info.get("version")) if info.get("version") else None,
+            "model": opt_s(info.get("model_path") or info.get("model_id")),
+            "version": opt_s(info.get("version")),
             "maxConcurrentRequests": info.get("max_concurrent_requests"),
         },
     }

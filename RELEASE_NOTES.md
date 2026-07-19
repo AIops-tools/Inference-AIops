@@ -1,55 +1,48 @@
-# Inference AIops v0.1.0 — preview
+# Release notes — inference-aiops 0.4.0
 
-Governed AI-ops for **GPU inference clusters** — **vLLM** (OpenAI API +
-Prometheus `/metrics`) and **Ray Serve / Ray Jobs** (Ray dashboard) — for AI
-agents, with a built-in governance harness (audit, policy, token/runaway budget,
-undo-token recording, graduated risk tiers) and an optional encrypted credential
-store. Standalone — no external skill-family dependency.
+Previous release: 0.3.0.
 
-> **Preview / mock-only.** All behaviour is validated against mocked vLLM
-> `/metrics`, vLLM OpenAI API, and Ray dashboard responses; it has not been run
-> against a live cluster. The fastest live check is `inference-aiops doctor`.
-
-## Highlights
-
-- **30 MCP tools** (16 read, 14 write), every one wrapped with `@governed_tool`.
-  - **Metrics & RCA** (read): `request_metrics` (TTFT/TPOT/e2e + token totals),
-    `queue_depth` (running vs waiting backpressure), `kv_cache_stats` (KV util,
-    prefix-cache hit rate, preemptions), and the flagship correlators
-    `diagnose_latency_spike` / `diagnose_low_utilization`.
-  - **Ray Serve**: reads (`serve_deployment_list`, `deployment_status`,
-    `replica_list`, `autoscale_config_get`) + guarded writes (`scale_replicas_up`,
-    `scale_replicas_down`, `scale_to_zero`, `autoscale_config_update`,
-    `drain_replica`).
-  - **Models / vLLM**: `model_list`, `model_info`, `lora_load`, `lora_unload`,
-    `model_hot_swap` (Sleep-Mode base swap, captures prior model).
-  - **Ray cluster / jobs / GPU**: `ray_cluster_resources`, `ray_dashboard_status`,
-    `ray_job_list`, `gpu_utilization`, `ray_job_cancel`, `replica_restart`.
-  - **Deploy lifecycle**: `model_deploy`, `model_undeploy`, `deployment_redeploy`,
-    `routing_policy_update` (prefix-aware / session-affinity routing).
-  - **Cost**: `cost_per_token` (deterministic $/1M tokens from throughput × GPU $/hr).
-- **Prometheus-native** — parses vLLM's `/metrics` directly; no Prometheus
-  server required.
-- **Safety on the fragile ops** — `scale_replicas_down`, `scale_to_zero`,
-  `drain_replica`, `lora_unload`, `model_hot_swap`, `replica_restart`,
-  `model_undeploy`, `deployment_redeploy` are high-risk with `dry_run` +
-  double-confirm; reversible writes record an undo descriptor.
-- **Optional-token auth** — a bearer token is optional (many stacks run open);
-  when required it is stored **encrypted** (`~/.inference-aiops/secrets.enc`,
-  Fernet + scrypt) — never plaintext on disk.
-- **CLI** with an `init` onboarding wizard, `secret` management, and a `doctor`
-  that probes the Ray dashboard and vLLM independently.
-
-## Install
+## Headline: read-only mode
 
 ```bash
-uv tool install inference-aiops
-inference-aiops init
-inference-aiops doctor
+export INFERENCE_READ_ONLY=1
 ```
 
-## Caveats
+With this set the **15 write tools are never registered** — an MCP
+client lists **22 tools instead of 37**. The writes are not hidden
+behind a flag and not merely refused on call: they are absent from the session,
+so a model cannot invoke one and cannot be argued into one. For a reviewer this
+is checkable rather than promised — connect, list the tools, and the writes are
+not there.
 
-- Preview / mock-only: validated against mocked responses; needs live verification.
-- Unverified against real hardware: multi-GPU tensor/pipeline-parallel
-  deployments, real GPU thermal/throttle telemetry, and multi-node drain.
+Enforcement is two layers deep: the `@governed_tool` harness refuses every
+non-read operation (covering the CLI and in-process callers too), and the MCP
+server removes write tools from `list_tools()`. Changing entry point does not
+get around it.
+
+## BREAKING — return shapes changed
+
+This release changes payloads that callers may be parsing. Both changes exist
+to stop a result from misrepresenting itself:
+
+1. **Absent fields are now `null`, not `""`.** A missing value and an empty value
+   were previously indistinguishable, which invited consumers to invent the
+   difference. Keys are still always present — only the value may be null.
+2. **Anything with a `limit` now returns an envelope** —
+   `{"<items>": [...], "returned": N, "limit": L, "truncated": bool}`. Truncation is
+   *measured* (one extra row is fetched), never inferred from the page happening to
+   be full. Where a genuine pre-cap total is knowable it is reported as `total`;
+   where it isn't, `total` is deliberately omitted rather than echoing `returned`.
+
+## Also in this release
+
+- **`docs/VERIFICATION.md`** — what the mock suite actually guarantees, a live
+  verification checklist, and the criteria for claiming this tool verified.
+- **`skills/inference-aiops/references/agent-guardrails.md`** — for driving this tool with a
+  smaller / local model: which guardrails are now enforced for you, and a
+  ready-made system prompt for the rest.
+- Expanded operator playbooks in the skill documentation.
+- The advertised tool count now matches what an MCP client actually lists
+  (it includes `undo_list` / `undo_apply`), and a release gate keeps it honest.
+- The `(preview)` label has been dropped. It never meant unreleased; verification
+  status now lives in `docs/VERIFICATION.md` where it can be specific.

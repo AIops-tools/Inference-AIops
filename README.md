@@ -1,6 +1,6 @@
 <!-- mcp-name: io.github.AIops-tools/inference-aiops -->
 
-# Inference AIops (preview)
+# Inference AIops
 
 > **Disclaimer**: Community-maintained open-source project. **Not affiliated with, endorsed by, or sponsored by the vLLM or Ray projects or any inference-serving vendor.** Product and trademark names belong to their owners. MIT licensed.
 
@@ -11,8 +11,7 @@ serving engines **SGLang** and **TGI (Text Generation Inference)** — with a
 budget guard, undo-token recording, and graduated-autonomy risk tiers. It parses
 each engine's Prometheus `/metrics` directly (no Prometheus server required) and
 probes the Ray dashboard independently. A bearer token is **optional** (many
-stacks run open). **Preview — mock-validated only, not yet verified against a
-live cluster.**
+stacks run open).
 
 **Serving engines.** vLLM is the flagship (full Ray Serve control plane: scale,
 drain, autoscale, LoRA, hot-swap). **SGLang** and **TGI** are supported for
@@ -42,7 +41,47 @@ The flagship value is **root-cause analysis**, wrapped in guarded reads and writ
 - **Laptop self-test** — ~80% of the tool self-tests free: vLLM on a single GPU
   or CPU-mock + Ray in one local container (`ray start --head`).
 
-## Capability matrix (35 MCP tools)
+## Security: read-only mode
+
+This tool is meant to be handed to an AI agent, so its safety story is enforced
+by the server rather than requested in a prompt:
+
+```bash
+export INFERENCE_READ_ONLY=1
+```
+
+With that set, the **15 write tools are never registered**. An MCP client
+lists **22 tools instead of 37** — the writes are not hidden, not
+gated behind a flag, and not merely refused when called. They are absent from
+the session. A model cannot invoke a tool it was never offered, and cannot be
+argued into one.
+
+That distinction is the whole point. A tool that exists but refuses still invites
+retry loops and "I'll describe the call instead" behaviour from smaller models,
+and it leaves a reviewer trusting a promise. An absent tool is a fact you can
+check: connect, list the tools, and see that the writes are not there.
+
+Enforcement is two layers deep, so the switch cannot be sidestepped by changing
+entry point:
+
+| Layer | What it does | Covers |
+|---|---|---|
+| `@governed_tool` harness | refuses every non-read operation outright | MCP, CLI, and in-process callers |
+| MCP registration | write tools are removed from `list_tools()` | anything speaking MCP |
+
+Read operations are unaffected, and every call is still audited to
+`~/.inference-aiops/audit.db`.
+
+> The read/write split is derived from each tool's declared `risk_level`, and a
+> test asserts that this never disagrees with the `[READ]`/`[WRITE]` tag in the
+> tool's own documentation — so a write can't quietly present itself as a read.
+
+Running a smaller / local model? See
+[agent-guardrails.md](skills/inference-aiops/references/agent-guardrails.md) — it lists
+the guardrails this tool now enforces for you (so you don't spend prompt budget
+restating them) and gives a ready-made system prompt for what's left.
+
+## Capability matrix (37 MCP tools)
 
 | Group | Tools | Count | R/W (risk) |
 |-------|-------|:-----:|:-----------|
@@ -81,7 +120,7 @@ inference-aiops metrics diagnose         # why is inference slow? ranked RCA + t
 inference-aiops serve list               # Ray Serve deployments + replica counts
 ```
 
-Run as an MCP server (stdio) for the full 35-tool surface:
+Run as an MCP server (stdio) for the full 37-tool surface:
 
 ```bash
 export INFERENCE_AIOPS_MASTER_PASSWORD=...   # only if a bearer token is stored
@@ -89,7 +128,7 @@ inference-aiops mcp
 ```
 
 The CLI is a convenience subset (`init`, `overview`, `serve …`, `metrics …`,
-`secret …`, `doctor`, `mcp`); the full 35 tools are exposed via the MCP server.
+`secret …`, `doctor`, `mcp`); the full 37 tools are exposed via the MCP server.
 
 ## Governance
 
@@ -107,10 +146,12 @@ Every MCP tool passes through the bundled `@governed_tool` harness:
 
 ## Supported scope + limitations
 
-**Preview / mock-only.** All behaviour is validated against mocked vLLM
-`/metrics`, vLLM OpenAI API, and Ray dashboard responses. **~80% of the tool
-self-tests on a laptop** — vLLM on a single GPU or CPU-mock plus a local
-one-node Ray head. Not yet verified against a live production cluster.
+Behaviour is exercised by the test suite against mocked vLLM `/metrics`, vLLM
+OpenAI API, and Ray dashboard responses. **~80% of the tool self-tests on a
+laptop** — vLLM on a single GPU or CPU-mock plus a local one-node Ray head. It
+has not been run against a live production cluster; see
+[`docs/VERIFICATION.md`](docs/VERIFICATION.md) for the live-verification
+checklist.
 
 Unverified against real hardware / topology:
 
@@ -119,7 +160,8 @@ Unverified against real hardware / topology:
   the Ray dashboard's `/api/nodes`),
 - **multi-node drain** and node-reboot orchestration.
 
-The fastest live check is `inference-aiops doctor`.
+The fastest live check is `inference-aiops doctor`; the full checklist lives in
+[`docs/VERIFICATION.md`](docs/VERIFICATION.md).
 
 ## Missing a capability?
 

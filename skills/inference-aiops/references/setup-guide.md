@@ -1,6 +1,6 @@
 # inference-aiops setup & security guide
 
-> Preview / mock-only — not yet validated against a live cluster.
+> Not yet validated against a live cluster — see `docs/VERIFICATION.md`.
 
 ## 1. Install
 
@@ -73,8 +73,9 @@ Most of the tool self-tests on a laptop with no cloud GPUs:
 
 Point a target at `host: 127.0.0.1` with `ray_port: 8265` / `vllm_port: 8000`
 and run `inference-aiops doctor`. Reads, RCA, and most scaling ops exercise
-end-to-end. Unverified in preview: multi-GPU tensor/pipeline-parallel
-deployments, real GPU thermal/throttle telemetry, and multi-node drain.
+end-to-end. Still unverified: multi-GPU tensor/pipeline-parallel deployments,
+real GPU thermal/throttle telemetry, and multi-node drain (see
+`docs/VERIFICATION.md`).
 
 ## Credential security (when a token is used)
 

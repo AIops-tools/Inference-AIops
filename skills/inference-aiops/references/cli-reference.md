@@ -1,6 +1,6 @@
 # inference-aiops CLI reference
 
-> Preview / mock-only. Serving engines: vLLM (OpenAI API + Prometheus `/metrics`,
+> Serving engines: vLLM (OpenAI API + Prometheus `/metrics`,
 > default 8000) with its Ray dashboard control plane (Serve + Jobs, default 8265),
 > plus single-process SGLang (default 30000) and TGI (default 8080); endpoints
 > need live verification.

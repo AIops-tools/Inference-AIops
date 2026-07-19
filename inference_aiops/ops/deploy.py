@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from inference_aiops.ops._util import _seg, as_obj, s
+from inference_aiops.ops._util import _seg, as_obj, opt_s, s
 from inference_aiops.ops.engine import require_control_plane
 
 _APPS = "/api/serve/applications/"
@@ -40,8 +40,8 @@ def undeploy_model(conn: Any, application: str) -> dict:
         apps = as_obj(conn.get_ray(_APPS)).get("applications", {}) or {}
         app = apps.get(application) or {}
         if isinstance(app, dict):
-            prior["importPath"] = s(app.get("import_path")) if app.get("import_path") else None
-            prior["routePrefix"] = s(app.get("route_prefix")) if app.get("route_prefix") else None
+            prior["importPath"] = opt_s(app.get("import_path"))
+            prior["routePrefix"] = opt_s(app.get("route_prefix"))
     except Exception:  # noqa: BLE001 — prior capture is best-effort, never block the write
         pass
     conn.delete_ray(f"{_APPS}{_seg(application)}")
@@ -78,4 +78,4 @@ def update_routing_policy(conn: Any, application: str, deployment: str, policy: 
                  json={"policy": policy})
     return {"action": "routing_policy_update", "application": s(application),
             "deployment": s(deployment), "policy": s(policy),
-            "priorState": {"policy": s(prior) if prior is not None else None}}
+            "priorState": {"policy": opt_s(prior)}}
