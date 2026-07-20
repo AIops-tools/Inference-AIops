@@ -25,7 +25,8 @@ EXPECTED_TOOLS = {
     "scale_replicas_up", "scale_replicas_down", "scale_to_zero",
     "autoscale_config_update", "drain_replica",
     # models
-    "model_list", "model_info", "lora_load", "lora_unload", "model_hot_swap",
+    "model_list", "model_info", "model_is_sleeping", "lora_load", "lora_unload",
+    "model_sleep", "model_wake",
     # ray cluster / jobs / gpu
     "ray_cluster_resources", "ray_dashboard_status", "ray_job_list", "gpu_utilization",
     "ray_job_cancel", "replica_restart",
@@ -243,7 +244,7 @@ def test_scale_to_zero_captures_prior_and_records_undo(monkeypatch):
     recorded = {}
 
     class _Store:
-        def record(self, *, skill, tool, undo_descriptor, orig_params):
+        def record(self, *, skill, tool, undo_descriptor, orig_params, effect_verified=True):
             recorded["d"] = undo_descriptor
             return "undo-1"
 

@@ -47,7 +47,7 @@ def test_routing_policy_update_captures_prior_and_records_undo(monkeypatch):
     recorded = {}
 
     class _Store:
-        def record(self, *, skill, tool, undo_descriptor, orig_params):
+        def record(self, *, skill, tool, undo_descriptor, orig_params, effect_verified=True):
             recorded["d"] = undo_descriptor
             return "undo-r"
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.5.0 — 2026-07-20
+
+### Fixed
+- **BREAKING: `hot_swap_model` is removed.** It POSTed to `/v1/hot_swap`, **an endpoint vLLM has never had.** The docstring named vLLM Sleep Mode, so the path appears to have been invented for it — and Sleep Mode suspends the same model rather than swapping base models, so the advertised capability does not exist on the platform at all.
+- **Replaced by the real thing:** `model_sleep`, `model_wake` and `model_is_sleeping`, on vLLM's actual `/sleep`, `/wake_up` and `/is_sleeping`.
+- Harness: a write whose response is lost is audited `status=unknown`, not `error` — it may have taken effect. Undo tokens gain `effectVerified` (undo.db migrated in place).
+- Harness: a dry-run no longer records an undo token, and no longer requires a named approver. Guards now run on the preview path.
+- Truncated strings end in an ellipsis instead of being cut silently; error messages are capped at 800 chars, not 300.
+
+See RELEASE_NOTES.md for the full detail.
+
 ## v0.3.0 — 2026-07-17
 
 ### Added

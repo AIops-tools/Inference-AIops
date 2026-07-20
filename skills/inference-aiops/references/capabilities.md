@@ -1,6 +1,6 @@
 # inference-aiops capabilities
 
-> 37 MCP tools (21 read, 14 write, 2 undo). Serving engines:
+> 39 MCP tools (23 read, 16 write, 2 undo). Serving engines:
 > **vLLM** (OpenAI API + Prometheus `/metrics`, default 8000) with its **Ray**
 > dashboard control plane (Serve + Jobs, default 8265), plus the single-process
 > engines **SGLang** (OpenAI API + `/get_server_info` + Prometheus `/metrics`,
@@ -57,9 +57,18 @@ being guessed.
 |------|-----------|---------|----------|-------|
 | `model_list` | read | vLLM | `GET /v1/models` | served model ids |
 | `model_info` | read | vLLM | `GET /v1/models` | one model's detail (normalised) |
+| `model_is_sleeping` | read | vLLM | `GET /is_sleeping` | dev-mode only; `null` = engine did not say (UNKNOWN, not awake) |
 | `lora_load` | write (med) | vLLM | `POST /v1/load_lora_adapter` | reversible (undo unloads it) |
 | `lora_unload` | write (**high**) | vLLM | `POST /v1/unload_lora_adapter` | dry-run |
-| `model_hot_swap` | write (**high**) | vLLM | `POST /v1/hot_swap` | dry-run; Sleep-Mode base swap; captures prior model → undo |
+| `model_sleep` | write (**high**) | vLLM | `POST /sleep?level=N` | dev-mode only; dry-run; level 1 offloads weights to CPU RAM, 2 discards them; captures `wasSleeping` → undo wakes only what it suspended |
+| `model_wake` | write (med) | vLLM | `POST /wake_up` | dev-mode only; dry-run; records **no** undo — vLLM never reports the prior sleep *level*, so re-sleeping would be a guess |
+
+> **Sleep Mode needs `VLLM_SERVER_DEV_MODE=1`.** vLLM registers `/sleep`, `/wake_up`
+> and `/is_sleeping` only under that flag, so on a normal production server these
+> three tools report that the route does not exist and why — a 404 here means the
+> server was not started in dev mode, not that an id was stale. Sleep Mode suspends
+> the **same** model; vLLM has no in-place base-model swap (that needs a restart
+> with a different `--model`).
 
 ## Ray cluster / jobs / GPU (6)
 

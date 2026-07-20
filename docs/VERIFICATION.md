@@ -32,6 +32,25 @@ What it does **not** guarantee: that real vLLM/Ray metric names, Ray dashboard
 JSON shapes, and Serve scaling semantics match what the analyses assume — nor
 that the GPU-utilisation reads mean what we think on real hardware.
 
+### Sleep Mode paths are modelled from documentation — NOT live-verified
+
+`model_sleep`, `model_wake` and `model_is_sleeping` call `POST /sleep?level=N`,
+`POST /wake_up` and `GET /is_sleeping`. Those paths, the `level` semantics
+(1 = offload weights to CPU RAM, 2 = discard them), the `is_sleeping` response
+shape, and the `VLLM_SERVER_DEV_MODE=1` gate are all taken from vLLM's
+documentation. **None of it has been exercised against a running vLLM server**,
+and this repo cannot be verified on the current development machine: the
+`rayproject/ray` image is amd64-only and collapses under QEMU on arm64 (its
+dashboard dies as soon as it is queried). Status: **UNKNOWN — pending live**.
+
+This is stated plainly because the same class of defect has already shipped from
+this repo once. The tool these three replace, `model_hot_swap`, POSTed to
+`/v1/hot_swap` — an endpoint vLLM has never served. The mock suite was green
+because the fixtures asserted the same invented path the code called, so the
+tests proved only that the code agreed with itself. Doc-modelled paths are a
+weaker claim than mock-tested ones, not a stronger one; treat everything in this
+section as unconfirmed until the checklist below is run.
+
 ## Prerequisites for a live run
 
 **Cheap path (~80% of the checklist)**: vLLM on a single GPU — or a CPU-only
@@ -96,10 +115,18 @@ do not silently pass.
 - [ ] `inference-aiops serve scale-to-zero <app> <deployment> --dry-run` → prints
       the call, changes nothing; then for real → replicas reach 0 and `undo apply`
       brings back the captured count.
-- [ ] `model_hot_swap` on a throwaway deployment then `undo apply` → the
-      **prior** base model is serving again (check `model_info`).
 - [ ] `lora_load` then `lora_unload` → the adapter appears in and disappears
       from `model_list`.
+- [ ] **Sleep Mode (needs `VLLM_SERVER_DEV_MODE=1`)** — `model_is_sleeping`
+      reports false; `model_sleep --dry-run` changes nothing; for real → GPU
+      memory is released and `model_is_sleeping` reports true; `undo apply`
+      wakes it and the engine serves again.
+- [ ] `model_sleep` against an **already sleeping** engine records **no** undo
+      descriptor (it changed nothing, so there is nothing to reverse).
+- [ ] **Non-dev-mode server** (the common production case): all three Sleep-Mode
+      tools report that the route does not exist *and* name
+      `VLLM_SERVER_DEV_MODE=1` as the reason. Criterion: the message must not
+      read as a stale id or a generic failure.
 
 ### 5. Multi-node / topology behaviour (needs ≥2 GPU nodes)
 - [ ] `drain_replica --dry-run`, then for real → in-flight requests complete

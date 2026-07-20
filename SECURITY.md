@@ -46,7 +46,7 @@ Every MCP tool runs through the bundled `@governed_tool` harness
 
 ### State-Changing Operations
 Destructive/traffic-affecting writes — `scale_replicas_down`, `scale_to_zero`,
-`drain_replica`, `lora_unload`, `model_hot_swap`, `model_undeploy`,
+`drain_replica`, `lora_unload`, `model_sleep`, `model_undeploy`,
 `deployment_redeploy`, `replica_restart` — are `risk_level=high`, accept a
 `dry_run` preview, and (under `risk_tiers`) require a recorded approver
 (`INFERENCE_AUDIT_APPROVED_BY` + `INFERENCE_AUDIT_RATIONALE`). The CLI

@@ -50,8 +50,8 @@ by the server rather than requested in a prompt:
 export INFERENCE_READ_ONLY=1
 ```
 
-With that set, the **15 write tools are never registered**. An MCP client
-lists **22 tools instead of 37** — the writes are not hidden, not
+With that set, the **16 write tools are never registered**. An MCP client
+lists **23 tools instead of 39** — the writes are not hidden, not
 gated behind a flag, and not merely refused when called. They are absent from
 the session. A model cannot invoke a tool it was never offered, and cannot be
 argued into one.
@@ -81,7 +81,7 @@ Running a smaller / local model? See
 the guardrails this tool now enforces for you (so you don't spend prompt budget
 restating them) and gives a ready-made system prompt for what's left.
 
-## Capability matrix (37 MCP tools)
+## Capability matrix (39 MCP tools)
 
 | Group | Tools | Count | R/W (risk) |
 |-------|-------|:-----:|:-----------|
@@ -89,7 +89,8 @@ restating them) and gives a ready-made system prompt for what's left.
 | **Engine-agnostic** (vLLM / SGLang / TGI) | `engine_health`, `engine_inventory`, `engine_request_metrics`, `engine_queue_depth`, `diagnose_engine_latency` | 5 | read |
 | **Ray Serve (read)** | `serve_deployment_list`, `deployment_status`, `replica_list`, `autoscale_config_get` | 4 | read |
 | **Ray Serve (write)** | `scale_replicas_up`, `scale_replicas_down`, `scale_to_zero`, `autoscale_config_update`, `drain_replica` | 5 | write (med / **high**) |
-| **Models / vLLM** | `model_list`, `model_info`, `lora_load`, `lora_unload`, `model_hot_swap` | 5 | read + write (med / **high**) |
+| **Models / vLLM** | `model_list`, `model_info`, `model_is_sleeping`, `lora_load`, `lora_unload` | 5 | read + write (med) |
+| **Sleep Mode / vLLM** (needs `VLLM_SERVER_DEV_MODE=1`) | `model_sleep`, `model_wake` | 2 | write (**high** / med) |
 | **Ray cluster / jobs / GPU** | `ray_cluster_resources`, `ray_dashboard_status`, `ray_job_list`, `gpu_utilization`, `ray_job_cancel`, `replica_restart` | 6 | read + write (med / **high**) |
 | **Deploy lifecycle** | `model_deploy`, `model_undeploy`, `deployment_redeploy`, `routing_policy_update` | 4 | write (med / **high**) |
 | **Cost** | `cost_per_token` | 1 | read |
@@ -99,10 +100,18 @@ vLLM); use it for SGLang/TGI targets or a uniform view across a mixed fleet. The
 Ray Serve / cluster / deploy write groups are vLLM-only (Ray control plane) — they
 teach-and-refuse on a SGLang/TGI target.
 
-**21 read, 14 write.** High-risk writes (`scale_replicas_down`,
-`scale_to_zero`, `drain_replica`, `lora_unload`, `model_hot_swap`,
+**23 read, 16 write.** High-risk writes (`scale_replicas_down`,
+`scale_to_zero`, `drain_replica`, `lora_unload`, `model_sleep`,
 `replica_restart`, `model_undeploy`, `deployment_redeploy`) all support
 `dry_run` + double-confirm; reversible writes record an undo descriptor.
+
+> **Sleep Mode requires a dev-mode server.** vLLM registers `/sleep`,
+> `/wake_up` and `/is_sleeping` **only** when started with
+> `VLLM_SERVER_DEV_MODE=1`. Against any other server these three tools
+> report that the route is absent and why, rather than failing vaguely.
+> Sleep Mode suspends the **same** model; it does not swap base models —
+> serving a different base model means restarting vLLM with a different
+> `--model`.
 
 ## Install
 
@@ -120,7 +129,7 @@ inference-aiops metrics diagnose         # why is inference slow? ranked RCA + t
 inference-aiops serve list               # Ray Serve deployments + replica counts
 ```
 
-Run as an MCP server (stdio) for the full 37-tool surface:
+Run as an MCP server (stdio) for the full 39-tool surface:
 
 ```bash
 export INFERENCE_AIOPS_MASTER_PASSWORD=...   # only if a bearer token is stored
@@ -128,7 +137,7 @@ inference-aiops mcp
 ```
 
 The CLI is a convenience subset (`init`, `overview`, `serve …`, `metrics …`,
-`secret …`, `doctor`, `mcp`); the full 37 tools are exposed via the MCP server.
+`secret …`, `doctor`, `mcp`); the full 39 tools are exposed via the MCP server.
 
 ## Governance
 

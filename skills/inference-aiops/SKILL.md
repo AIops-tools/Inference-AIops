@@ -2,7 +2,7 @@
 name: inference-aiops
 slug: inference-aiops
 displayName: "Inference AIops"
-summary: "Governed GPU inference ops (vLLM + Ray Serve): latency RCA, scaling, drain, 37 tools."
+summary: "Governed GPU inference ops (vLLM + Ray Serve): latency RCA, scaling, drain, 39 tools."
 license: MIT
 homepage: https://github.com/AIops-tools/Inference-AIops
 tags: [aiops, mcp, governance, inference]
@@ -22,7 +22,7 @@ compatibility: >
   Standalone, self-governed GPU-inference operations. The governance harness (audit, policy, token/runaway budget, undo, risk-tiers) is bundled in the package — no external skill-family dependency.
   All write operations are audited to a local SQLite DB under ~/.inference-aiops/ (relocatable via INFERENCE_AIOPS_HOME).
   Auth: a bearer token is OPTIONAL — many vLLM / Ray stacks run open. When the API requires one it is stored ENCRYPTED in ~/.inference-aiops/secrets.enc (Fernet/AES-128 + scrypt-derived key) — never plaintext on disk. Run 'inference-aiops init' to onboard, or 'inference-aiops secret set <target>' to add one. The store is unlocked by a master password from INFERENCE_AIOPS_MASTER_PASSWORD (non-interactive/MCP/CI) or an interactive prompt (CLI on a TTY). A legacy plaintext env var INFERENCE_<TARGET_NAME_UPPER>_TOKEN is still honoured as a fallback (migrate with 'inference-aiops secret migrate'). The token is sent as an Authorization: Bearer header at request time and held only in memory; it is never logged or echoed.
-  State-changing operations require double confirmation at the CLI layer and support --dry-run. All write tools pass through the @governed_tool decorator (pre-check + budget guard + audit + risk-tier gate). The fragile prod ops — scale_replicas_down, scale_to_zero, drain_replica, lora_unload, model_hot_swap, replica_restart, model_undeploy, deployment_redeploy — are high-risk with a dry_run preview; reversible writes (scale, autoscale-config, routing, hot-swap, LoRA load) record an undo descriptor.
+  State-changing operations require double confirmation at the CLI layer and support --dry-run. All write tools pass through the @governed_tool decorator (pre-check + budget guard + audit + risk-tier gate). The fragile prod ops — scale_replicas_down, scale_to_zero, drain_replica, lora_unload, model_sleep, replica_restart, model_undeploy, deployment_redeploy — are high-risk with a dry_run preview; reversible writes (scale, autoscale-config, routing, sleep, LoRA load) record an undo descriptor.
   Engines: vLLM (with its Ray Serve control plane), SGLang, and TGI. SGLang/TGI are single-process servers with engine-agnostic observability (health, running-model inventory, request metrics, queue depth, latency RCA); Ray-shaped scale/drain writes are vLLM-only and raise a teaching error on a SGLang/TGI target.
   Metrics: each engine's Prometheus /metrics endpoint is parsed directly — no Prometheus server is required.
   Webhooks: none — no outbound calls beyond the configured Ray dashboard and vLLM services.
@@ -35,7 +35,7 @@ compatibility: >
 
 > **Disclaimer**: Community-maintained open-source project, **not affiliated with, endorsed by, or sponsored by the vLLM or Ray projects or any inference-serving vendor.** Product and trademark names belong to their owners. Source at [github.com/AIops-tools/Inference-AIops](https://github.com/AIops-tools/Inference-AIops) under the MIT license.
 
-Governed GPU-inference operations for **vLLM** (OpenAI API + Prometheus `/metrics`) and **Ray Serve / Ray Jobs** (Ray dashboard), plus the single-process serving engines **SGLang** and **TGI** — **37 MCP tools**, every one wrapped with the bundled `@governed_tool` harness: a local unified audit log under `~/.inference-aiops/`, policy engine, token/runaway budget guard, undo-token recording, and graduated-autonomy risk tiers. The flagship `diagnose_latency_spike` folds queue depth + KV-cache pressure + prefix-cache locality into a ranked cause and the specific knob to turn; the engine-agnostic `diagnose_engine_latency` does the same across whatever signals SGLang/TGI expose. Each engine's Prometheus `/metrics` is parsed directly — **no Prometheus server required**.
+Governed GPU-inference operations for **vLLM** (OpenAI API + Prometheus `/metrics`) and **Ray Serve / Ray Jobs** (Ray dashboard), plus the single-process serving engines **SGLang** and **TGI** — **39 MCP tools**, every one wrapped with the bundled `@governed_tool` harness: a local unified audit log under `~/.inference-aiops/`, policy engine, token/runaway budget guard, undo-token recording, and graduated-autonomy risk tiers. The flagship `diagnose_latency_spike` folds queue depth + KV-cache pressure + prefix-cache locality into a ranked cause and the specific knob to turn; the engine-agnostic `diagnose_engine_latency` does the same across whatever signals SGLang/TGI expose. Each engine's Prometheus `/metrics` is parsed directly — **no Prometheus server required**.
 
 > **Standalone**: the governance harness is bundled in the package (`inference_aiops.governance`) — no external skill-family dependency. A bearer token is **optional** (many stacks run open).
 
@@ -52,7 +52,7 @@ Governed GPU-inference operations for **vLLM** (OpenAI API + Prometheus `/metric
 | **Deploy lifecycle** | deploy (med), undeploy (high), redeploy (high), routing policy update (med) | 4 | 4 write |
 | **Cost** | cost per token | 1 | 1 read |
 
-**21 read, 14 write**, plus `undo_list` / `undo_apply` — **37 MCP tools** in total. The high-risk writes support `dry_run` + double-confirm; reversible writes record an undo descriptor. The engine-agnostic reads cover any engine; the Ray Serve / cluster / deploy write groups are vLLM-only and teach-and-refuse on a SGLang/TGI target (single-process engines have no Ray control plane).
+**23 read, 16 write**, plus `undo_list` / `undo_apply` — **39 MCP tools** in total. The high-risk writes support `dry_run` + double-confirm; reversible writes record an undo descriptor. The engine-agnostic reads cover any engine; the Ray Serve / cluster / deploy write groups are vLLM-only and teach-and-refuse on a SGLang/TGI target (single-process engines have no Ray control plane).
 
 ## Quick Install
 
@@ -118,14 +118,16 @@ inference-aiops doctor     # vLLM: probes Ray + vLLM; SGLang/TGI: engine health 
 4. Watch `replica_list` until the replica is gone and `request_metrics` shows no error spike, then reboot the node
 5. **Failure branch**: if the drain hangs on a long-running request, `replica_restart` forcibly cycles it — that **drops** in-flight requests, so only reach for it once you accept the loss. Multi-node drain has not been verified against a live cluster (see `docs/VERIFICATION.md`).
 
-### 4. Hot-swap a base model, verify it, roll back if quality regresses
+### 4. Free GPU memory between bursts with Sleep Mode, then resume
 
-1. `model_list` / `model_info` → record what is serving now (the undo descriptor will capture this, but you want it in front of you)
-2. `request_metrics` → capture a **baseline** TTFT/TPOT before the swap, so "it feels slower" can be checked against a number
-3. `model_hot_swap <new_model> --dry-run`, then confirm → **high** risk; a Sleep-Mode base swap that captures the prior model into an undo descriptor
-4. For adapter-level changes instead of a base swap: `lora_load` (reversible) and `lora_unload` (high) are the lighter path
-5. Verify: `model_info` shows the new model, and `request_metrics` is compared against the step-2 baseline
-6. **Failure branch**: if latency or quality regresses, `inference-aiops undo apply <id>` replays the swap back to the **captured** prior model — not a guessed one. If the swap left the deployment unhealthy rather than merely worse, `deployment_redeploy` restores a clean state.
+1. `model_is_sleeping` → is the engine already suspended? `null` means the engine did not report it — that is UNKNOWN, not awake, so resolve it before writing
+2. `request_metrics` / `queue_depth` → confirm the engine is actually idle; sleeping a busy engine drops live traffic
+3. `model_sleep --dry-run`, then confirm → **high** risk. Level 1 offloads the weights to CPU RAM and wakes fast; level 2 discards them, so waking reloads from disk. The undo descriptor is recorded **only** if the engine was observed awake first — an already-sleeping engine records none, so an undo can never wake something this call did not suspend
+4. Verify: `model_is_sleeping` reports true, and GPU memory has been released (`gpu_utilization`)
+5. Resume with `model_wake` (medium risk), or `inference-aiops undo apply <id>` to replay the recorded inverse. `model_wake` itself records **no** undo: vLLM reports whether the engine sleeps but never at which level, and guessing between level 1 and level 2 would be inventing a prior state
+6. **Failure branch**: if any of the three tools reports that the route does not exist, the server was **not** started with `VLLM_SERVER_DEV_MODE=1`. That is a server start-up flag, not a fault in the tool and not a stale id — restart vLLM with the flag, or leave Sleep Mode off if this is a production deployment that should not expose it.
+
+> vLLM has **no** in-place base-model swap. Sleep Mode suspends and resumes the *same* model; serving a different base model means restarting vLLM with a different `--model`. For adapter-level changes use `lora_load` (reversible) and `lora_unload` (high).
 
 ## Governance & Safety
 

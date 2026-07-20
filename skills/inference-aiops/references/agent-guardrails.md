@@ -18,7 +18,7 @@ harness is a guarantee. Anything below that we could move into the harness, we d
 | "Tell me if the output was cut off" | `ray_job_list` returns `{"jobs": [...], "returned": N, "limit": L, "truncated": true/false}`. Truncation is measured against the full fetch, not guessed from a length coincidence. |
 | "Say when a metric isn't available" | Signals the engine does not expose come back as `null` rather than `0`. SGLang and TGI expose fewer metrics than vLLM; `diagnose_engine_latency` skips a signal it cannot read instead of fabricating it, and `signalsChecked` shows exactly what it looked at. |
 | "Don't suggest scaling on an engine that can't scale" | Multi-replica scale / drain / autoscale are Ray Serve control-plane actions. On a single-process engine (SGLang, TGI) those tools raise `EngineCapabilityError` with an explanation, rather than issuing a call that could never succeed. |
-| "Confirm before anything disruptive" | Traffic-affecting operations (`model_undeploy`, `deployment_redeploy`, `scale_to_zero`, `drain_replica`, `replica_restart`, `lora_unload`, `model_hot_swap`) require a `--dry-run`-able preview + double confirmation at the CLI, and a named approver (`INFERENCE_AUDIT_APPROVED_BY`) for high-risk tiers. |
+| "Confirm before anything disruptive" | Traffic-affecting operations (`model_undeploy`, `deployment_redeploy`, `scale_to_zero`, `drain_replica`, `replica_restart`, `lora_unload`, `model_sleep`) require a `--dry-run`-able preview + double confirmation at the CLI, and a named approver (`INFERENCE_AUDIT_APPROVED_BY`) for high-risk tiers. |
 | "Log what you did" | Every call is audited to `~/.inference-aiops/audit.db` regardless of what the model says it did. |
 
 ## What still needs a prompt
