@@ -115,9 +115,8 @@ mcp = FastMCP(
         "load/unload and model hot-swap; Ray cluster/jobs and GPU utilisation; "
         "and cost-per-token. Guarded writes cover scaling, autoscale tuning, and "
         "the fragile prod ops — scale-down/scale-to-zero/drain/undeploy/hot-swap "
-        "are risk=high with a dry_run preview and require an approver. Every tool "
-        "runs through the inference-aiops governance harness (audit / budget / "
-        "risk-tier / undo)."
+        "are risk=high with a dry_run preview. Every tool runs through the "
+        "inference-aiops governance harness (audit / budget / risk-tier / undo)."
     ),
 )
 

@@ -22,7 +22,7 @@ compatibility: >
   Standalone, self-governed GPU-inference operations. The governance harness (audit, policy, token/runaway budget, undo, risk-tiers) is bundled in the package — no external skill-family dependency.
   All write operations are audited to a local SQLite DB under ~/.inference-aiops/ (relocatable via INFERENCE_AIOPS_HOME).
   Auth: a bearer token is OPTIONAL — many vLLM / Ray stacks run open. When the API requires one it is stored ENCRYPTED in ~/.inference-aiops/secrets.enc (Fernet/AES-128 + scrypt-derived key) — never plaintext on disk. Run 'inference-aiops init' to onboard, or 'inference-aiops secret set <target>' to add one. The store is unlocked by a master password from INFERENCE_AIOPS_MASTER_PASSWORD (non-interactive/MCP/CI) or an interactive prompt (CLI on a TTY). A legacy plaintext env var INFERENCE_<TARGET_NAME_UPPER>_TOKEN is still honoured as a fallback (migrate with 'inference-aiops secret migrate'). The token is sent as an Authorization: Bearer header at request time and held only in memory; it is never logged or echoed.
-  State-changing operations require double confirmation at the CLI layer and support --dry-run. All write tools pass through the @governed_tool decorator (pre-check + budget guard + audit + risk-tier gate). The fragile prod ops — scale_replicas_down, scale_to_zero, drain_replica, lora_unload, model_sleep, replica_restart, model_undeploy, deployment_redeploy — are high-risk with a dry_run preview; reversible writes (scale, autoscale-config, routing, sleep, LoRA load) record an undo descriptor.
+  State-changing operations require double confirmation at the CLI layer and support --dry-run. All write tools pass through the @governed_tool decorator (budget/runaway guard + audit + risk-tier label — it records, not authorizes). The fragile prod ops — scale_replicas_down, scale_to_zero, drain_replica, lora_unload, model_sleep, replica_restart, model_undeploy, deployment_redeploy — are high-risk with a dry_run preview; reversible writes (scale, autoscale-config, routing, sleep, LoRA load) record an undo descriptor.
   Engines: vLLM (with its Ray Serve control plane), SGLang, and TGI. SGLang/TGI are single-process servers with engine-agnostic observability (health, running-model inventory, request metrics, queue depth, latency RCA); Ray-shaped scale/drain writes are vLLM-only and raise a teaching error on a SGLang/TGI target.
   Metrics: each engine's Prometheus /metrics endpoint is parsed directly — no Prometheus server is required.
   Webhooks: none — no outbound calls beyond the configured Ray dashboard and vLLM services.
@@ -35,7 +35,7 @@ compatibility: >
 
 > **Disclaimer**: Community-maintained open-source project, **not affiliated with, endorsed by, or sponsored by the vLLM or Ray projects or any inference-serving vendor.** Product and trademark names belong to their owners. Source at [github.com/AIops-tools/Inference-AIops](https://github.com/AIops-tools/Inference-AIops) under the MIT license.
 
-Governed GPU-inference operations for **vLLM** (OpenAI API + Prometheus `/metrics`) and **Ray Serve / Ray Jobs** (Ray dashboard), plus the single-process serving engines **SGLang** and **TGI** — **39 MCP tools**, every one wrapped with the bundled `@governed_tool` harness: a local unified audit log under `~/.inference-aiops/`, policy engine, token/runaway budget guard, undo-token recording, and graduated-autonomy risk tiers. The flagship `diagnose_latency_spike` folds queue depth + KV-cache pressure + prefix-cache locality into a ranked cause and the specific knob to turn; the engine-agnostic `diagnose_engine_latency` does the same across whatever signals SGLang/TGI expose. Each engine's Prometheus `/metrics` is parsed directly — **no Prometheus server required**.
+Governed GPU-inference operations for **vLLM** (OpenAI API + Prometheus `/metrics`) and **Ray Serve / Ray Jobs** (Ray dashboard), plus the single-process serving engines **SGLang** and **TGI** — **39 MCP tools**, every one wrapped with the bundled `@governed_tool` harness: a local unified audit log under `~/.inference-aiops/`, policy engine, token/runaway budget guard, undo-token recording, and descriptive risk-tier labels on every audit row. The flagship `diagnose_latency_spike` folds queue depth + KV-cache pressure + prefix-cache locality into a ranked cause and the specific knob to turn; the engine-agnostic `diagnose_engine_latency` does the same across whatever signals SGLang/TGI expose. Each engine's Prometheus `/metrics` is parsed directly — **no Prometheus server required**.
 
 > **Standalone**: the governance harness is bundled in the package (`inference_aiops.governance`) — no external skill-family dependency. A bearer token is **optional** (many stacks run open).
 
@@ -86,8 +86,6 @@ inference-aiops doctor     # vLLM: probes Ray + vLLM; SGLang/TGI: engine health 
 
 ## Common Workflows
 
-> **Secure by default (v0.2.0+)**: with no `~/.inference-aiops/rules.yaml`, high/critical operations are denied unless `INFERENCE_AUDIT_APPROVED_BY` names an approver (set `INFERENCE_AUDIT_RATIONALE` too). `inference-aiops init` seeds a starter rules.yaml; an operator-authored rules file is honoured as-is.
-
 ### 1. "Inference got slow this afternoon" (flagship RCA → the right knob)
 
 1. `inference-aiops doctor` → confirm the vLLM endpoint and Ray dashboard are actually reachable before blaming the model
@@ -105,7 +103,7 @@ inference-aiops doctor     # vLLM: probes Ray + vLLM; SGLang/TGI: engine health 
 1. `inference-aiops metrics requests` → confirm traffic really is idle, not just briefly quiet
 2. `diagnose_low_utilization` → the deployments actually burning GPU for nothing, with the measured utilisation
 3. `cost_per_token` → quantify the bleed ($/1M tokens at the current throughput) so the change is justifiable in the audit trail
-4. `export INFERENCE_AUDIT_APPROVED_BY=you INFERENCE_AUDIT_RATIONALE="off-peak cost save"`
+4. (optional) `export INFERENCE_AUDIT_APPROVED_BY=you INFERENCE_AUDIT_RATIONALE="off-peak cost save"` → annotates the audit row with who/why; recorded when set, never required
 5. `inference-aiops serve scale-to-zero <app> <deployment> --dry-run`, then re-run without `--dry-run` → **high** risk, double confirmation. `scale_to_zero` stops the bleed but **strands ingress** — requests will queue or fail until replicas return
 6. To restore: `inference-aiops undo apply <id>` (replays the captured prior replica count) or `inference-aiops serve scale <app> <deployment> --replicas N`
 7. **Failure branch**: if traffic arrives while at zero, restore immediately via undo — do not wait for autoscale, since `scale_to_zero` may have been applied outside the autoscaler's floor. If the restore fails, `serve status` will show the deployment unhealthy; `deployment_redeploy` is the last resort (high risk, disruptive).
@@ -131,10 +129,18 @@ inference-aiops doctor     # vLLM: probes Ray + vLLM; SGLang/TGI: engine health 
 
 ## Governance & Safety
 
-- Every tool is audited to `~/.inference-aiops/audit.db` (relocatable via `INFERENCE_AIOPS_HOME`).
-- High-risk ops can require a named approver: set `INFERENCE_AUDIT_APPROVED_BY` and `INFERENCE_AUDIT_RATIONALE`.
-- The fragile prod writes support `--dry-run` and double confirmation at the CLI.
-- Reversible writes (scale, autoscale-config, routing, hot-swap, LoRA load) record an inverse descriptor.
+The skill delivers reads and writes and records them; it does **not** decide
+whether a write is permitted. That is your agent's judgement, or the permission
+of the environment you connect it with (a network path that only reaches the
+read/metrics endpoints, a Ray dashboard without its job-submission API — writes
+then fail at the server). There is no read-only switch, policy file, or approval
+gate.
+
+- **Audit is the guarantee, and it is not bypassable.** Every operation — MCP and CLI alike — is logged to `~/.inference-aiops/audit.db` (relocatable via `INFERENCE_AIOPS_HOME`): params, result, status, duration, and the risk tier. The CLI writes the same row the MCP path does.
+- `INFERENCE_AUDIT_APPROVED_BY` / `INFERENCE_AUDIT_RATIONALE` are optional annotations recorded on the audit row (who/why); they are never required and never block.
+- **Runaway guard** — a safety backstop, not authorization: the same call looped in a tight window trips a circuit breaker.
+- The fragile prod writes support `--dry-run` / `dry_run=True` and double confirmation at the CLI.
+- Reversible writes (scale, autoscale-config, routing, hot-swap, LoRA load) capture before-state and record an inverse descriptor.
 
 ## References
 

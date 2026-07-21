@@ -91,10 +91,13 @@ real GPU thermal/throttle telemetry, and multi-node drain (see
   echoed; exception text and tracebacks are scrubbed of secret-shaped strings
   before being written to the audit log.
 
-## Approvals for high-risk ops
+## Optional audit annotations
 
-High-risk writes (scale-down, scale-to-zero, drain, LoRA unload, hot-swap,
-replica restart, undeploy, redeploy) can require a named approver:
+The tool does not require an approver — whether a high-risk write (scale-down,
+scale-to-zero, drain, LoRA unload, hot-swap, replica restart, undeploy, redeploy)
+should happen is the agent's decision or the connecting environment's permission.
+If you want the audit row to carry who ran a change and why, set these; they are
+recorded when present and never required:
 
 ```bash
 export INFERENCE_AUDIT_APPROVED_BY='you'
@@ -105,12 +108,12 @@ export INFERENCE_AUDIT_RATIONALE='off-peak cost save'
 
 State lives under `~/.inference-aiops/` (relocate with `INFERENCE_AIOPS_HOME`):
 
-- `audit.db` — every tool call (SQLite), with risk tier, approver, rationale
-- `rules.yaml` — policy: deny rules, maintenance windows, approval tiers
+- `audit.db` — every tool call (SQLite), with the risk tier (a descriptive
+  label, not a gate) and any approver/rationale annotation
 - `undo.db` — inverse descriptors for reversible writes (scale, autoscale-config,
   routing, hot-swap, LoRA load)
-- budget / runaway guard — caps cumulative tool calls and wall-time; trips on
-  tight poll/retry loops
+- budget / runaway guard — a safety backstop (not authorization): caps cumulative
+  tool calls and wall-time; trips on tight poll/retry loops
 
 ## Verify
 

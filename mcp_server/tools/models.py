@@ -111,7 +111,7 @@ def lora_unload(
 ) -> dict:
     """[WRITE][risk=high] Hot-unload a LoRA adapter (traffic on it starts failing).
 
-    Pass dry_run=True to preview. Requires an approver (INFERENCE_AUDIT_APPROVED_BY).
+    Pass dry_run=True to preview.
 
     Args:
         lora_name: Adapter name to unload (from model_list).
@@ -134,8 +134,7 @@ def model_sleep(
 
     Frees GPU memory between bursts. level=1 offloads the weights to CPU RAM and
     wakes fast; level=2 discards them, so waking reloads from disk. The engine
-    serves nothing until model_wake. Pass dry_run=True to preview. Requires an
-    approver (INFERENCE_AUDIT_APPROVED_BY).
+    serves nothing until model_wake. Pass dry_run=True to preview.
 
     Sleep Mode exists only on servers started with VLLM_SERVER_DEV_MODE=1; on any
     other server this reports that the route is absent rather than failing vaguely.

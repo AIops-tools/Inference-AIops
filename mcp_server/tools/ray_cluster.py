@@ -92,7 +92,6 @@ def replica_restart(
     """[WRITE][risk=high] Restart one wedged Serve replica (kills + respawns the actor).
 
     Drops the replica's in-flight requests — pass dry_run=True to preview.
-    Requires an approver (INFERENCE_AUDIT_APPROVED_BY).
 
     Args:
         application: Serve application name.

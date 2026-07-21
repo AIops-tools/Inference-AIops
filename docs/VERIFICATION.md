@@ -136,12 +136,14 @@ do not silently pass.
 - [ ] `replica_restart` cycles a stuck replica and the deployment returns to
       healthy.
 
-### 6. Governance actually gates
-- [ ] With no `~/.inference-aiops/rules.yaml`, a `high`-risk op
-      (`scale_to_zero`, `drain_replica`, `model_undeploy`) is **refused** unless
-      `INFERENCE_AUDIT_APPROVED_BY` names an approver (secure-by-default).
-- [ ] With the approver set, the op proceeds and the audit row records the
-      approver and `INFERENCE_AUDIT_RATIONALE`.
+### 6. Governance records (it does not gate)
+- [ ] A `high`-risk op (`scale_to_zero`, `drain_replica`, `model_undeploy`) runs
+      with **no** approver set, and the audit row records it with
+      `risk_tier=review`. There is no read-only switch, policy file, or approval
+      gate to configure.
+- [ ] With `INFERENCE_AUDIT_APPROVED_BY` / `INFERENCE_AUDIT_RATIONALE` set, the
+      audit row additionally records the approver and rationale — an annotation
+      only, never required.
 - [ ] A failed write is audited with `status=error` and records **no** undo token.
 - [ ] A tight metrics-poll loop trips the runaway budget guard rather than
       hammering `/metrics`.

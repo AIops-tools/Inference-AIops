@@ -26,7 +26,7 @@ import yaml
 
 from inference_aiops.engines import DEFAULT_ENGINE_PORTS, SUPPORTED_ENGINES, get_engine_spec
 from inference_aiops.governance.paths import ops_home
-from inference_aiops.secretstore import SecretStoreError, get_secret, has_store
+from inference_aiops.secretstore import MasterPasswordError, SecretStoreError, get_secret, has_store
 
 CONFIG_DIR = ops_home()
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
@@ -53,6 +53,13 @@ def _resolve_secret(name: str) -> str:
     if has_store():
         try:
             return get_secret(name)
+        except MasterPasswordError:
+            # A wrong or missing master password is NOT "this target has no
+            # secret". Falling through resurfaced it as a missing-credential
+            # error, sending the operator to add something already there.
+            # MasterPasswordError subclasses SecretStoreError, so the broad
+            # catch below would swallow it — re-raise first.
+            raise
         except SecretStoreError:
             pass  # fall through to legacy env var / no-auth
     legacy = os.environ.get(_secret_env_key(name))

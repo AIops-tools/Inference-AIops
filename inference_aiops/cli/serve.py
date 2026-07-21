@@ -13,7 +13,7 @@ from inference_aiops.cli._common import (
     cli_errors,
     console,
     double_confirm,
-    dry_run_print,
+    dry_run_preview,
     get_connection,
 )
 
@@ -60,10 +60,16 @@ def serve_scale(
     from mcp_server.tools import serve as gov
 
     if dry_run:
-        dry_run_print(operation="scale_replicas",
-                      api_call=f"PUT /api/serve/applications/{application}/deployments/"
-                               f"{deployment}",
-                      parameters={"num_replicas": num_replicas})
+        preview = gov.scale_replicas_up(
+            application=application, deployment=deployment,
+            num_replicas=num_replicas, dry_run=True, target=target)
+        dry_run_preview(
+            preview,
+            operation="scale_replicas",
+            api_call=f"PUT /api/serve/applications/{application}/deployments/"
+                     f"{deployment}",
+            parameters={"from_replicas": preview.get("from"),
+                        "to_replicas": preview.get("to")})
         return
     console.print_json(json.dumps(gov.scale_replicas_up(
         application=application, deployment=deployment,
@@ -80,10 +86,15 @@ def serve_scale_zero(
     from mcp_server.tools import serve as gov
 
     if dry_run:
-        dry_run_print(operation="scale_to_zero",
-                      api_call=f"PUT /api/serve/applications/{application}/deployments/"
-                               f"{deployment}",
-                      parameters={"num_replicas": 0})
+        preview = gov.scale_to_zero(
+            application=application, deployment=deployment, dry_run=True, target=target)
+        dry_run_preview(
+            preview,
+            operation="scale_to_zero",
+            api_call=f"PUT /api/serve/applications/{application}/deployments/"
+                     f"{deployment}",
+            parameters={"from_replicas": preview.get("from"),
+                        "to_replicas": preview.get("to")})
         return
     double_confirm("scale to zero", f"{application}/{deployment}")
     console.print_json(json.dumps(gov.scale_to_zero(

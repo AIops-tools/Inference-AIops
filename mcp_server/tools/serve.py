@@ -25,6 +25,26 @@ def _replica_undo(params: dict[str, Any], result: Any) -> Optional[dict]:
             "note": "Restore the deployment's prior replica count."}
 
 
+def _replicas_now(conn: Any, application: str, deployment: str) -> Optional[int]:
+    """Current replica count for a scale preview, or raise if it cannot be read.
+
+    ``get_deployment_status`` reports a failed lookup as ``{"error": ...}``
+    rather than raising, so a preview that just called ``.get("numReplicas")``
+    on it would quietly render ``from: null`` — a green "here is what would
+    happen" for a deployment that does not exist, whose write then fails. The
+    preview depends on this read, so when the read fails the preview fails:
+    ``tool_errors`` turns this into the same ``{"error": ...}`` a refusal wears,
+    and the CLI exits non-zero instead of reassuring the caller.
+    """
+    cur = ops.get_deployment_status(conn, application, deployment)
+    if "error" in cur:
+        raise ValueError(
+            f"Cannot preview the scale of '{application}/{deployment}': its current "
+            f"replica count could not be read — {cur['error']}"
+        )
+    return cur.get("numReplicas")
+
+
 def _autoscale_undo(params: dict[str, Any], result: Any) -> Optional[dict]:
     """Inverse of update_autoscale_config: restore the captured prior bounds."""
     if not isinstance(result, dict):
@@ -105,17 +125,27 @@ def autoscale_config_get(application: str, deployment: str, target: Optional[str
 @governed_tool(risk_level="medium", undo=_replica_undo)
 @tool_errors("dict")
 def scale_replicas_up(
-    application: str, deployment: str, num_replicas: int, target: Optional[str] = None
+    application: str, deployment: str, num_replicas: int,
+    dry_run: bool = False, target: Optional[str] = None
 ) -> dict:
     """[WRITE][risk=medium] Raise a deployment's replica count (reversible → prior).
+
+    Pass dry_run=True to preview: it reads the deployment's current count, so
+    the preview reports the real from→to rather than only the requested target —
+    and it fails here, not mid-write, if the deployment does not exist.
 
     Args:
         application: Serve application name.
         deployment: Deployment name.
         num_replicas: New (higher) replica count.
+        dry_run: If True, preview without scaling.
         target: Inference target name from config; omit for the default.
     """
-    return ops.scale_replicas_up(_get_connection(target), application, deployment, num_replicas)
+    conn = _get_connection(target)
+    if dry_run:
+        return {"dryRun": True,
+                "from": _replicas_now(conn, application, deployment), "to": num_replicas}
+    return ops.scale_replicas_up(conn, application, deployment, num_replicas)
 
 
 @mcp.tool()
@@ -138,8 +168,8 @@ def scale_replicas_down(
     """
     conn = _get_connection(target)
     if dry_run:
-        cur = ops.get_deployment_status(conn, application, deployment)
-        return {"dryRun": True, "from": cur.get("numReplicas"), "to": num_replicas}
+        return {"dryRun": True,
+                "from": _replicas_now(conn, application, deployment), "to": num_replicas}
     return ops.scale_replicas_down(conn, application, deployment, num_replicas)
 
 
@@ -152,7 +182,7 @@ def scale_to_zero(
     """[WRITE][risk=high] Park a deployment at 0 replicas (reversible → prior count).
 
     Stops the cost bleed but adds cold-start latency and can strand the ingress —
-    pass dry_run=True to preview. Requires an approver (INFERENCE_AUDIT_APPROVED_BY).
+    pass dry_run=True to preview.
 
     Args:
         application: Serve application name.
@@ -162,8 +192,8 @@ def scale_to_zero(
     """
     conn = _get_connection(target)
     if dry_run:
-        cur = ops.get_deployment_status(conn, application, deployment)
-        return {"dryRun": True, "from": cur.get("numReplicas"), "to": 0}
+        return {"dryRun": True,
+                "from": _replicas_now(conn, application, deployment), "to": 0}
     return ops.scale_to_zero(conn, application, deployment)
 
 
@@ -200,7 +230,7 @@ def drain_replica(
 ) -> dict:
     """[WRITE][risk=high] Gracefully drain one replica (finish in-flight, take no new).
 
-    Pass dry_run=True to preview. Requires an approver (INFERENCE_AUDIT_APPROVED_BY).
+    Pass dry_run=True to preview.
 
     Args:
         application: Serve application name.

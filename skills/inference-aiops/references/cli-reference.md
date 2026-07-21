@@ -51,7 +51,7 @@ inference-aiops serve scale-to-zero <application> <deployment> [--dry-run]   # (
 > `model_wake` (dev-mode servers only),
 > `ray_job_cancel`, `replica_restart`, `model_deploy` / `model_undeploy`,
 > `deployment_redeploy`, `routing_policy_update` — are exposed via the MCP
-> server. High-risk ones require an approver and support a dry-run preview.
+> server. High-risk ones support a dry-run preview.
 
 ## Common options
 

@@ -37,8 +37,10 @@ Every MCP tool runs through the bundled `@governed_tool` harness
   `INFERENCE_MAX_TOOL_SECONDS`) plus an on-by-default guard that trips a tight
   poll/retry loop, preventing unbounded API consumption (e.g. polling a slow
   session).
-- **Graduated risk tiers** — `~/.inference-aiops/rules.yaml` `risk_tiers` gate
-  writes by environment/tag; the highest tiers require a recorded approver.
+- **Risk-tier labelling** — each audit row carries a descriptive tier derived
+  from the tool's `risk_level` (low→none, medium→confirm, high→review); it is a
+  label for reviewers, not a gate. There is no read-only switch, policy file, or
+  approval gate.
 - **Undo-token recording** — reversible writes capture the BEFORE state and
   record an inverse descriptor (e.g. a scale op → restore the prior replica
   count, `autoscale_config_update` → restore prior bounds, `routing_policy_update`
@@ -47,11 +49,12 @@ Every MCP tool runs through the bundled `@governed_tool` harness
 ### State-Changing Operations
 Destructive/traffic-affecting writes — `scale_replicas_down`, `scale_to_zero`,
 `drain_replica`, `lora_unload`, `model_sleep`, `model_undeploy`,
-`deployment_redeploy`, `replica_restart` — are `risk_level=high`, accept a
-`dry_run` preview, and (under `risk_tiers`) require a recorded approver
-(`INFERENCE_AUDIT_APPROVED_BY` + `INFERENCE_AUDIT_RATIONALE`). The CLI
-additionally double-confirms `serve scale-to-zero` and supports `--dry-run`.
-Reversible medium/low writes capture before-state and record an undo token.
+`deployment_redeploy`, `replica_restart` — are `risk_level=high` and accept a
+`dry_run` preview. The CLI additionally double-confirms `serve scale-to-zero`
+and supports `--dry-run`. Reversible medium/low writes capture before-state and
+record an undo token. `INFERENCE_AUDIT_APPROVED_BY` + `INFERENCE_AUDIT_RATIONALE`
+are optional audit annotations recorded when set, but never required and never
+block.
 
 ### SSL/TLS Verification
 `verify_ssl` is off by default (inference stacks commonly serve plain HTTP on a

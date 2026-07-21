@@ -8,8 +8,9 @@ Governed AI-ops for **GPU inference clusters** — **vLLM** (OpenAI API + Promet
 `/metrics`) and **Ray Serve / Ray Jobs** (Ray dashboard), plus the single-process
 serving engines **SGLang** and **TGI (Text Generation Inference)** — with a
 **built-in governance harness**: unified audit log, policy engine, token/runaway
-budget guard, undo-token recording, and graduated-autonomy risk tiers. It parses
-each engine's Prometheus `/metrics` directly (no Prometheus server required) and
+budget guard, undo-token recording, and descriptive risk-tier labels on every
+audit row. It parses each engine's Prometheus `/metrics` directly (no Prometheus
+server required) and
 probes the Ray dashboard independently. A bearer token is **optional** (many
 stacks run open).
 
@@ -41,44 +42,30 @@ The flagship value is **root-cause analysis**, wrapped in guarded reads and writ
 - **Laptop self-test** — ~80% of the tool self-tests free: vLLM on a single GPU
   or CPU-mock + Ray in one local container (`ray start --head`).
 
-## Security: read-only mode
+## What this tool does, and does not, decide
 
-This tool is meant to be handed to an AI agent, so its safety story is enforced
-by the server rather than requested in a prompt:
+It delivers inference-cluster operations — reads and writes — accurately and
+efficiently, and records every one of them. It does **not** decide whether a
+write is allowed to happen. That is the agent's judgement, or the permission of
+the environment you connect it with: restrict the network path so it can only
+reach the read/metrics endpoints, or run the Ray dashboard without its
+job-submission API, and the writes fail at the server — the place that actually
+owns the permission.
 
-```bash
-export INFERENCE_READ_ONLY=1
-```
+So there is no read-only switch, no policy file, no approval gate to configure.
+The one thing the tool guarantees is that nothing is silent: **every call, over
+MCP and over the CLI alike, lands an audit row** in
+`~/.inference-aiops/audit.db`, and destructive writes still capture their
+before-state and record an inverse where one exists.
 
-With that set, the **16 write tools are never registered**. An MCP client
-lists **23 tools instead of 39** — the writes are not hidden, not
-gated behind a flag, and not merely refused when called. They are absent from
-the session. A model cannot invoke a tool it was never offered, and cannot be
-argued into one.
-
-That distinction is the whole point. A tool that exists but refuses still invites
-retry loops and "I'll describe the call instead" behaviour from smaller models,
-and it leaves a reviewer trusting a promise. An absent tool is a fact you can
-check: connect, list the tools, and see that the writes are not there.
-
-Enforcement is two layers deep, so the switch cannot be sidestepped by changing
-entry point:
-
-| Layer | What it does | Covers |
-|---|---|---|
-| `@governed_tool` harness | refuses every non-read operation outright | MCP, CLI, and in-process callers |
-| MCP registration | write tools are removed from `list_tools()` | anything speaking MCP |
-
-Read operations are unaffected, and every call is still audited to
-`~/.inference-aiops/audit.db`.
-
-> The read/write split is derived from each tool's declared `risk_level`, and a
-> test asserts that this never disagrees with the `[READ]`/`[WRITE]` tag in the
-> tool's own documentation — so a write can't quietly present itself as a read.
+> Each tool declares a `risk_level`, kept in agreement with its `[READ]`/`[WRITE]`
+> documentation tag by a test, and carried into the audit row as a descriptive
+> tier — so a reviewer can see at a glance that a row was a high-risk
+> scale-to-zero. It is a label, not a gate.
 
 Running a smaller / local model? See
 [agent-guardrails.md](skills/inference-aiops/references/agent-guardrails.md) — it lists
-the guardrails this tool now enforces for you (so you don't spend prompt budget
+the guardrails this tool enforces for you (so you don't spend prompt budget
 restating them) and gives a ready-made system prompt for what's left.
 
 ## Capability matrix (39 MCP tools)
@@ -141,15 +128,19 @@ The CLI is a convenience subset (`init`, `overview`, `serve …`, `metrics …`,
 
 ## Governance
 
-Every MCP tool passes through the bundled `@governed_tool` harness:
+Every MCP tool passes through the bundled `@governed_tool` harness. It does not
+decide whether a write is permitted — see *What this tool does, and does not,
+decide* above — but it records every call:
 
-- **Audit** — every call (params, result, status, duration, risk tier,
-  approver, rationale) logged to `~/.inference-aiops/audit.db` (relocatable via
-  `INFERENCE_AIOPS_HOME`).
-- **Budget / runaway guard** — token and call budgets trip a circuit breaker on
-  tight poll/retry loops.
-- **Risk tiers** — graduated autonomy; high-risk ops can require a named
-  approver (`INFERENCE_AUDIT_APPROVED_BY` / `INFERENCE_AUDIT_RATIONALE`).
+- **Audit** — every call (params, result, status, duration, risk tier, and any
+  approver/rationale annotation) logged to `~/.inference-aiops/audit.db`
+  (relocatable via `INFERENCE_AIOPS_HOME`).
+- **Budget / runaway guard** — a safety backstop, not authorization: token and
+  call budgets trip a circuit breaker on tight poll/retry loops.
+- **Risk tier** — each audit row carries a descriptive tier derived from the
+  tool's `risk_level`; it is a label, not a gate. `INFERENCE_AUDIT_APPROVED_BY`
+  / `INFERENCE_AUDIT_RATIONALE` are optional annotations recorded when set,
+  never required.
 - **Undo recording** — reversible writes (scale, autoscale-config, routing,
   hot-swap, LoRA load) record an inverse descriptor.
 

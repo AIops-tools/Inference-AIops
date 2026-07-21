@@ -9,16 +9,31 @@ the tool now enforces them itself.
 The distinction matters. A guardrail in a prompt is a request. A guardrail in the
 harness is a guarantee. Anything below that we could move into the harness, we did.
 
+## Authorization is not this tool's job — decide it where it belongs
+
+Whether a write should happen is your decision, or the environment's. The tool
+does not gate it — there is no read-only switch and no approval prompt to
+configure. The two right places to control read vs write:
+
+- **The environment you connect it to.** Restrict the network path so the tool
+  can only reach the read/metrics endpoints, or run the Ray dashboard without its
+  job-submission API. A write then fails at the server, which is the only place
+  the permission actually lives — no skill-side flag can be argued around by a
+  model, but a blocked endpoint cannot.
+- **Your agent's system prompt.** If you want an observe-only session, tell the
+  model not to call the write tools (they are clearly tagged `[WRITE]`).
+
+What the tool *does* guarantee is that you can always see what happened:
+
 ## What the tool now enforces — do not waste prompt budget on these
 
 | You might be tempted to prompt | Why you don't need to |
 |---|---|
-| "Only observe, never change the serving cluster" | Set `INFERENCE_READ_ONLY=1`. Write tools are then **not registered at all** — they never appear in the tool list, so the model cannot call one even if it tries. The `@governed_tool` harness independently refuses writes, so the CLI is covered too. That covers routine-looking writes as well: `scale_replicas_up`, `lora_load` and `routing_policy_update` disappear alongside `model_undeploy`. |
 | "Don't invent a value when a field is missing" | A field the engine or Ray dashboard did not return comes back as `null`, never as `""`. An absent job `entrypoint`, a model's `parent` adapter, a replica `state`, or a server-info `version` is distinguishable from an empty one. |
 | "Tell me if the output was cut off" | `ray_job_list` returns `{"jobs": [...], "returned": N, "limit": L, "truncated": true/false}`. Truncation is measured against the full fetch, not guessed from a length coincidence. |
 | "Say when a metric isn't available" | Signals the engine does not expose come back as `null` rather than `0`. SGLang and TGI expose fewer metrics than vLLM; `diagnose_engine_latency` skips a signal it cannot read instead of fabricating it, and `signalsChecked` shows exactly what it looked at. |
 | "Don't suggest scaling on an engine that can't scale" | Multi-replica scale / drain / autoscale are Ray Serve control-plane actions. On a single-process engine (SGLang, TGI) those tools raise `EngineCapabilityError` with an explanation, rather than issuing a call that could never succeed. |
-| "Confirm before anything disruptive" | Traffic-affecting operations (`model_undeploy`, `deployment_redeploy`, `scale_to_zero`, `drain_replica`, `replica_restart`, `lora_unload`, `model_sleep`) require a `--dry-run`-able preview + double confirmation at the CLI, and a named approver (`INFERENCE_AUDIT_APPROVED_BY`) for high-risk tiers. |
+| "Confirm before anything disruptive" | Traffic-affecting operations (`model_undeploy`, `deployment_redeploy`, `scale_to_zero`, `drain_replica`, `replica_restart`, `lora_unload`, `model_sleep`) require a `--dry-run`-able preview + double confirmation at the CLI. |
 | "Log what you did" | Every call is audited to `~/.inference-aiops/audit.db` regardless of what the model says it did. |
 
 ## What still needs a prompt
@@ -65,17 +80,20 @@ SCOPE
 
 ## Recommended setup for a local model
 
+Start with a path that *cannot* write — restrict the network route to the
+read/metrics endpoints, or expose the Ray dashboard without its job-submission
+API — verify, and widen access only when you trust the setup. The
+traffic-affecting operations here (`scale_to_zero`, `drain_replica`,
+`model_undeploy`) strand or drop live requests and are cheap to invoke:
+
 ```bash
-# Read-only until you trust the setup — this is enforced, not advisory.
-export INFERENCE_READ_ONLY=1
 inference-aiops doctor
 ```
 
-Then, when you are ready to allow writes, unset it and set an approver so the
-high-risk tier has an accountable name on it:
+Optionally annotate the audit trail with who is operating and why — recorded on
+every row, never required:
 
 ```bash
-unset INFERENCE_READ_ONLY
 export INFERENCE_AUDIT_APPROVED_BY="your.name@example.com"
 export INFERENCE_AUDIT_RATIONALE="scaling llm-app down for the maintenance window"
 ```

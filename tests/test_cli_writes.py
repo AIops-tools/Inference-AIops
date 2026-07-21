@@ -48,20 +48,139 @@ def _apps(num: int = 3) -> dict:
     }}}}}
 
 
+def _no_mutating_call(conn) -> None:
+    """No mutating verb reached the cluster, whatever else happened.
+
+    These are InferenceConnection's real mutating methods (Ray Dashboard
+    put/post/delete plus the vLLM POST). Asserting on methods the transport does
+    not have would pass vacuously against a MagicMock.
+    """
+    conn.put_ray.assert_not_called()
+    conn.post_ray.assert_not_called()
+    conn.delete_ray.assert_not_called()
+    conn.post_vllm.assert_not_called()
+
+
 @pytest.mark.unit
-def test_cli_scale_to_zero_dry_run_makes_no_call_and_no_audit(gov_home, monkeypatch):
+def test_cli_scale_to_zero_dry_run_reads_and_audits_but_never_writes(gov_home, monkeypatch):
+    """A dry_run MAY read; it must never write.
+
+    The older "dry_run does zero I/O and leaves no trace" assumption was never a
+    stated rule and is wrong on its face: a preview that cannot read cannot
+    answer "would this be refused?", nor report the replica count it is about to
+    park at zero. So the read is expected, the audit row is expected (MCP
+    previews were always audited — the CLI silently not auditing was the
+    outlier), and only the MUTATING call is forbidden.
+    """
     from inference_aiops.cli import app
 
     conn = MagicMock(name="conn")
+    conn.get_ray.return_value = _apps(num=3)
     import mcp_server.tools.serve as gov_serve
 
     monkeypatch.setattr(gov_serve, "_get_connection", lambda target=None: conn)
     result = CliRunner().invoke(app, ["serve", "scale-to-zero", "app1", "dep1", "--dry-run"])
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
+    assert "DRY-RUN" in result.output  # human banner preserved, not raw JSON
+    conn.get_ray.assert_called()  # it DID read, to resolve the real from→to
+    _no_mutating_call(conn)
+    assert _audit_tools(gov_home / "audit.db") == ["scale_to_zero"]
+
+
+@pytest.mark.unit
+def test_cli_scale_to_zero_dry_run_reports_the_real_current_replica_count(
+    gov_home, monkeypatch
+):
+    """The banner carries the count the tool read, not a hardcoded 'num_replicas: 0'."""
+    from inference_aiops.cli import app
+
+    conn = MagicMock(name="conn")
+    conn.get_ray.return_value = _apps(num=7)
+    import mcp_server.tools.serve as gov_serve
+
+    monkeypatch.setattr(gov_serve, "_get_connection", lambda target=None: conn)
+    result = CliRunner().invoke(app, ["serve", "scale-to-zero", "app1", "dep1", "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert "from_replicas = 7" in result.output
+    assert "to_replicas = 0" in result.output
+
+
+@pytest.mark.unit
+def test_cli_scale_to_zero_dry_run_records_no_undo_token(gov_home, monkeypatch):
+    """A preview changed nothing, so there is nothing to reverse.
+
+    A phantom undo token is not inert: undo_apply would dispatch a REAL
+    scale_replicas_up for a scale-to-zero that never happened.
+    """
+    from inference_aiops.cli import app
+
+    conn = MagicMock(name="conn")
+    conn.get_ray.return_value = _apps(num=3)
+    import mcp_server.tools.serve as gov_serve
+
+    monkeypatch.setattr(gov_serve, "_get_connection", lambda target=None: conn)
+    CliRunner().invoke(app, ["serve", "scale-to-zero", "app1", "dep1", "--dry-run"])
+    if (gov_home / "undo.db").exists():
+        rows = sqlite3.connect(gov_home / "undo.db").execute(
+            "SELECT undo_tool FROM undo_log"
+        ).fetchall()
+        assert rows == [], f"dry-run registered a phantom undo: {rows}"
+
+
+@pytest.mark.unit
+def test_cli_scale_to_zero_dry_run_of_an_unknown_deployment_refuses_nonzero(
+    gov_home, monkeypatch
+):
+    """A preview that cannot resolve its target must refuse, not reassure.
+
+    Naming a deployment that does not exist is the commonest way a caller gets
+    this wrong. Before the reroute the preview happily described the scale
+    anyway, and the failure only surfaced on the confirmed write.
+    """
+    from inference_aiops.cli import app
+
+    conn = MagicMock(name="conn")
+    conn.get_ray.return_value = {"applications": {}}
+    import mcp_server.tools.serve as gov_serve
+
+    monkeypatch.setattr(gov_serve, "_get_connection", lambda target=None: conn)
+    result = CliRunner().invoke(app, ["serve", "scale-to-zero", "nope", "dep1", "--dry-run"])
+    assert result.exit_code == 1
+    assert "DRY-RUN" not in result.output  # no green banner for a refusal
+    _no_mutating_call(conn)
+
+
+@pytest.mark.unit
+def test_cli_serve_scale_dry_run_reads_and_audits_but_never_writes(gov_home, monkeypatch):
+    """A dry_run MAY read; it must never write."""
+    from inference_aiops.cli import app
+
+    conn = MagicMock(name="conn")
+    conn.get_ray.return_value = _apps(num=2)
+    import mcp_server.tools.serve as gov_serve
+
+    monkeypatch.setattr(gov_serve, "_get_connection", lambda target=None: conn)
+    result = CliRunner().invoke(app, ["serve", "scale", "app1", "dep1", "5", "--dry-run"])
+    assert result.exit_code == 0, result.output
     assert "DRY-RUN" in result.output
-    conn.get_ray.assert_not_called()
-    conn.put_ray.assert_not_called()
-    assert not (gov_home / "audit.db").exists()
+    assert "from_replicas = 2" in result.output and "to_replicas = 5" in result.output
+    _no_mutating_call(conn)
+    assert _audit_tools(gov_home / "audit.db") == ["scale_replicas_up"]
+
+
+@pytest.mark.unit
+def test_cli_undo_apply_dry_run_of_an_unknown_token_refuses_nonzero(gov_home):
+    """An unknown undo id is a refusal, not a preview of 'inverse: ?'.
+
+    Before the reroute this printed a green banner naming the inverse tool as
+    '?' — a preview of an operation that does not exist.
+    """
+    from inference_aiops.cli import app
+
+    result = CliRunner().invoke(app, ["undo", "apply", "nope-not-a-token", "--dry-run"])
+    assert result.exit_code == 1
+    assert "Unknown undo id" in result.output
+    assert "DRY-RUN" not in result.output
 
 
 @pytest.mark.unit

@@ -18,7 +18,7 @@ from inference_aiops.cli._common import (
     cli_errors,
     console,
     double_confirm,
-    dry_run_print,
+    dry_run_preview,
 )
 
 undo_app = typer.Typer(
@@ -52,10 +52,12 @@ def undo_apply_cmd(
 
     if dry_run:
         preview = gov.undo_apply(undo_id=undo_id, dry_run=True, target=target)
-        dry_run_print(
+        would = preview.get("wouldApply", {}) if isinstance(preview, dict) else {}
+        dry_run_preview(
+            preview,
             operation="undo_apply",
-            api_call=f"inverse: {preview.get('wouldApply', {}).get('tool', '?')}",
-            parameters=preview.get("wouldApply", {}).get("params", {}),
+            api_call=f"inverse: {would.get('tool', '?')}",
+            parameters=would.get("params", {}),
         )
         return
     double_confirm("apply undo", undo_id)

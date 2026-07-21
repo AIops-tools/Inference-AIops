@@ -2,8 +2,8 @@
 
 Undeploy (removes a whole app) and redeploy (re-applies config, can drop
 in-flight requests) are the fragile app-level ops — risk=high with a dry_run
-preview and an approver. ``routing_policy_update`` records an undo capturing the
-prior routing policy so a bad switch is reversible.
+preview. ``routing_policy_update`` records an undo capturing the prior routing
+policy so a bad switch is reversible.
 """
 
 from typing import Any, Optional
@@ -52,7 +52,6 @@ def model_undeploy(
     """[WRITE][risk=high] Tear down a whole Serve application (removes all deployments).
 
     Irreversible without the original import path — pass dry_run=True to preview.
-    Requires an approver (INFERENCE_AUDIT_APPROVED_BY).
 
     Args:
         application: Serve application name (from serve_deployment_list).
@@ -74,7 +73,7 @@ def deployment_redeploy(
     """[WRITE][risk=high] Force a deployment to re-apply new config.
 
     Applies the new config immediately and can drop unfinished requests — pass
-    dry_run=True to preview. Requires an approver (INFERENCE_AUDIT_APPROVED_BY).
+    dry_run=True to preview.
 
     Args:
         application: Serve application name.

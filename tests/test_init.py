@@ -75,20 +75,12 @@ def test_init_without_token_stores_no_secret(isolated_home, hidden_token):
     assert not (isolated_home / "secrets.enc").exists()
 
 
-def test_init_seeds_default_policy_rules(isolated_home, hidden_token):
+def test_init_writes_no_policy_rules(isolated_home, hidden_token):
+    """The skill no longer authorizes, so init seeds no rules.yaml — a fresh
+    install delivers full functionality and leaves permission to the account."""
     result = runner.invoke(app, ["init"], input=WIZARD_INPUT_NO_TOKEN)
     assert result.exit_code == 0, result.output
-    rules = (isolated_home / "rules.yaml").read_text("utf-8")
-    assert "high-risk-requires-approver" in rules
-    assert "tier: dual" in rules
-
-
-def test_init_does_not_clobber_existing_rules(isolated_home, hidden_token):
-    sentinel = "# operator-authored rules — do not touch\nrisk_tiers: []\n"
-    (isolated_home / "rules.yaml").write_text(sentinel, "utf-8")
-    result = runner.invoke(app, ["init"], input=WIZARD_INPUT_NO_TOKEN)
-    assert result.exit_code == 0, result.output
-    assert (isolated_home / "rules.yaml").read_text("utf-8") == sentinel
+    assert not (isolated_home / "rules.yaml").exists()
 
 
 def test_init_appends_to_existing_targets(isolated_home, hidden_token):

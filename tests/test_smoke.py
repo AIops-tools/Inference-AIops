@@ -271,13 +271,29 @@ def test_scale_to_zero_dry_run_does_not_mutate(monkeypatch):
 
 
 @pytest.mark.unit
-def test_cli_serve_scale_zero_dry_run_gates():
+def test_cli_serve_scale_zero_dry_run_gates(monkeypatch):
+    """The preview renders its banner and issues no mutating call.
+
+    It routes through the governed twin, which reads the deployment's current
+    replica count — so a connection is required, but the scaling PUT must never
+    fire.
+    """
+    import mcp_server.tools.serve as gov_serve
     from inference_aiops.cli import app
+
+    conn = MagicMock(name="conn")
+    conn.get_ray.return_value = {"applications": {"app1": {"deployments": {"dep1": {
+        "status": "HEALTHY",
+        "deployment_config": {"num_replicas": 3},
+        "replicas": [{"state": "RUNNING"}] * 3,
+    }}}}}
+    monkeypatch.setattr(gov_serve, "_get_connection", lambda target=None: conn)
 
     runner = CliRunner()
     result = runner.invoke(app, ["serve", "scale-to-zero", "app1", "dep1", "--dry-run"])
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
     assert "DRY-RUN" in result.output
+    conn.put_ray.assert_not_called()
 
 
 @pytest.mark.unit
@@ -291,3 +307,33 @@ def test_queue_depth_backpressure_flag():
     }
     out = ops.get_queue_depth(conn)
     assert out["numWaiting"] == 7.0 and out["backpressure"] is True
+
+
+@pytest.mark.unit
+def test_risk_level_agrees_with_read_write_docstring_tag():
+    """The two write-markers must never drift apart.
+
+    A tool's ``risk_level`` decides its audit tier and whether it gets dry-run /
+    undo handling; its ``[READ]``/``[WRITE]`` docstring tag is what the docs and
+    capability tables are built from. If a ``[WRITE]`` were left ``risk_level=low``
+    it would be audited as a read and skip the write machinery — this test caught
+    16 such mislabels line-wide once, so it is kept even though read-only mode
+    (its original motivation) is gone.
+    """
+    from mcp_server import server
+
+    untagged, mismatched = [], []
+    for name, tool in server.mcp._tool_manager._tools.items():
+        doc = (tool.fn.__doc__ or "").lstrip()
+        if doc.startswith("[READ]"):
+            tagged_as_read = True
+        elif doc.startswith("[WRITE]"):
+            tagged_as_read = False
+        else:
+            untagged.append(name)
+            continue
+        if tagged_as_read != (getattr(tool.fn, "_risk_level", "low") == "low"):
+            mismatched.append(name)
+
+    assert not untagged, f"tools missing a [READ]/[WRITE] docstring tag: {untagged}"
+    assert not mismatched, f"risk_level disagrees with the docstring tag: {mismatched}"
