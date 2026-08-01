@@ -33,20 +33,40 @@ def test_ray_job_list_normalizes_payload():
 
 @pytest.mark.unit
 def test_get_cluster_resources_parses_gpu_and_is_resilient():
+    """Current-Ray shape (verified against 2.56): totals + usage live under
+    clusterStatus.loadMetricsReport.usageByNode as {res: [used, total]}, summed
+    across nodes. availableCpu = total - used."""
     from inference_aiops.ops import ray_cluster as ops
 
     conn = MagicMock(name="conn")
-    conn.get_ray.return_value = {
-        "clusterResources": {"CPU": 64.0, "GPU": 8.0},
-        "availableResources": {"CPU": 32.0, "GPU": 3.0},
-        "pendingPlacementGroups": [{"id": "pg1"}, {"id": "pg2"}],
-    }
+    conn.get_ray.return_value = {"data": {"clusterStatus": {"loadMetricsReport": {
+        "usageByNode": {
+            "n1": {"CPU": [16.0, 32.0], "GPU": [2.0, 4.0]},
+            "n2": {"CPU": [16.0, 32.0], "GPU": [3.0, 4.0]},
+        },
+        "pgDemand": [{"bundle": 1}, {"bundle": 2}],
+    }}}}
     out = ops.get_cluster_resources(conn)
-    assert out["totalGpu"] == 8.0 and out["availableGpu"] == 3.0
-    assert out["totalCpu"] == 64.0 and out["pendingPlacementGroups"] == 2
+    assert out["totalCpu"] == 64.0 and out["availableCpu"] == 32.0  # 64 total - 32 used
+    assert out["totalGpu"] == 8.0 and out["availableGpu"] == 3.0    # 8 total - 5 used
+    assert out["pendingPlacementGroups"] == 2
 
     conn.get_ray.side_effect = RuntimeError("dashboard down")
     assert "error" in ops.get_cluster_resources(conn)
+
+
+@pytest.mark.unit
+def test_get_cluster_resources_gpuless_cluster_is_null_not_zero():
+    """A CPU-only cluster reports no GPU key at all — GPU must be null (unknown),
+    never a fabricated 0, while CPU is real."""
+    from inference_aiops.ops import ray_cluster as ops
+
+    conn = MagicMock(name="conn")
+    conn.get_ray.return_value = {"data": {"clusterStatus": {"loadMetricsReport": {
+        "usageByNode": {"n1": {"CPU": [0.4, 2.0]}}}}}}
+    out = ops.get_cluster_resources(conn)
+    assert out["totalCpu"] == 2.0 and out["availableCpu"] == 1.6
+    assert out["totalGpu"] is None and out["availableGpu"] is None
 
 
 @pytest.mark.unit
@@ -71,6 +91,6 @@ def test_replica_restart_dry_run_does_not_call_backend(monkeypatch):
     result = rc.replica_restart(application="app1", deployment="dep1",
                                 replica_id="r-1", dry_run=True)
     assert result["dryRun"] is True
-    assert result["wouldRestart"] == {"application": "app1", "deployment": "dep1",
-                                      "replicaId": "r-1"}
+    assert result["available"] is False
+    assert "per-replica" in result["reason"]
     conn.post_ray.assert_not_called()

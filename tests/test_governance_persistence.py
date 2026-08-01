@@ -120,11 +120,15 @@ def test_an_approver_is_still_recorded_when_supplied(gov_home, monkeypatch):
 
 
 def _apps(num: int = 3) -> dict:
-    return {"applications": {"app1": {"deployments": {"dep1": {
-        "status": "HEALTHY",
-        "deployment_config": {"num_replicas": num},
-        "replicas": [{"state": "RUNNING"}] * num,
-    }}}}}
+    return {"applications": {"app1": {
+        "deployed_app_config": {"name": "app1", "import_path": "app1:app",
+                                "route_prefix": "/app1",
+                                "deployments": [{"name": "dep1", "num_replicas": num}]},
+        "deployments": {"dep1": {
+            "status": "HEALTHY",
+            "deployment_config": {"num_replicas": num},
+            "replicas": [{"state": "RUNNING"}] * num,
+        }}}}}
 
 
 @pytest.mark.unit

@@ -84,9 +84,12 @@ def test_cancel_job_posts_stop_and_returns_action():
 
 
 @pytest.mark.unit
-def test_restart_replica_posts_encoded_restart_path():
+def test_restart_replica_refuses_no_rest_endpoint_exists():
+    """Ray Serve has no per-replica restart REST endpoint (the old path 404s), so
+    the op must refuse with a teaching error instead of POSTing to a dead path."""
+    from inference_aiops.connection import EngineCapabilityError
+
     conn = MagicMock(name="conn")
-    out = ops.restart_replica(conn, "llm", "VLLMDeployment", "r-7")
-    assert out["action"] == "replica_restart" and out["replicaId"] == "r-7"
-    (path,) = conn.post_ray.call_args.args
-    assert path == "/api/serve/applications/llm/deployments/VLLMDeployment/replicas/r-7/restart"
+    with pytest.raises(EngineCapabilityError, match="per-replica"):
+        ops.restart_replica(conn, "llm", "VLLMDeployment", "r-7")
+    conn.post_ray.assert_not_called()

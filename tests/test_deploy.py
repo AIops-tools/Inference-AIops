@@ -11,55 +11,65 @@ from unittest.mock import MagicMock
 import pytest
 
 
-def _apps_routing(policy="round_robin"):
-    return {"applications": {"app1": {"deployments": {"dep1": {
-        "deployment_config": {"routing_policy": policy},
-    }}}}}
+def _apps_declarative(*names):
+    """A /applications/ blob where each app has a declarative deployed_app_config."""
+    return {"applications": {
+        n: {"deployed_app_config": {"name": n, "import_path": f"{n}:app",
+                                    "route_prefix": f"/{n}",
+                                    "deployments": [{"name": "D", "num_replicas": 1}]}}
+        for n in names}}
 
 
 @pytest.mark.unit
-def test_deploy_model_puts_expected_body():
+def test_deploy_model_merges_app_into_declarative_schema():
+    """Ray's REST deploy is a whole-schema PUT — deploy_model must PRESERVE the
+    existing apps and add the new one, PUTting to the constant path."""
     from inference_aiops.ops import deploy as ops
 
     conn = MagicMock(name="conn")
+    conn.get_ray.return_value = _apps_declarative("existing")
     conn.put_ray.return_value = {}
-    out = ops.deploy_model(conn, "app1", "module:app", num_replicas=2)
+    out = ops.deploy_model(conn, "app1", "module:app")
 
-    conn.put_ray.assert_called_once_with(
-        "/api/serve/applications/",
-        json={"name": "app1", "import_path": "module:app", "num_replicas": 2},
-    )
-    assert out["action"] == "model_deploy"
-    assert out["application"] == "app1"
-    assert out["importPath"] == "module:app"
+    (path,) = conn.put_ray.call_args.args
+    assert path == "/api/serve/applications/"
+    apps = conn.put_ray.call_args.kwargs["json"]["applications"]
+    names = {a["name"] for a in apps}
+    assert names == {"existing", "app1"}, "must not delete the existing app"
+    new = next(a for a in apps if a["name"] == "app1")
+    assert new["import_path"] == "module:app"
+    assert out["action"] == "model_deploy" and out["importPath"] == "module:app"
 
 
 @pytest.mark.unit
-def test_routing_policy_update_captures_prior_and_records_undo(monkeypatch):
-    import inference_aiops.governance.undo as undo_mod
+def test_undeploy_puts_schema_without_the_target_app():
+    from inference_aiops.ops import deploy as ops
+
+    conn = MagicMock(name="conn")
+    conn.get_ray.return_value = _apps_declarative("app1", "keep")
+    conn.put_ray.return_value = {}
+    out = ops.undeploy_model(conn, "app1")
+
+    apps = conn.put_ray.call_args.kwargs["json"]["applications"]
+    names = {a["name"] for a in apps}
+    assert names == {"keep"}, "undeploy removes only the target, PUT preserves the rest"
+    assert out["priorState"]["importPath"] == "app1:app"  # captured for the audit
+
+
+@pytest.mark.unit
+def test_routing_policy_update_refuses_no_rest_endpoint(monkeypatch):
+    """Ray Serve routing policy is a code-level decorator option, not REST-settable;
+    the tool must refuse (teaching error) instead of PUTting to a 404 path."""
     from mcp_server.tools import deploy as dp
 
     conn = MagicMock(name="conn")
-    conn.get_ray.return_value = _apps_routing("round_robin")
-    conn.put_ray.return_value = {}
     monkeypatch.setattr(dp, "_get_connection", lambda target=None: conn)
-
-    recorded = {}
-
-    class _Store:
-        def record(self, *, skill, tool, undo_descriptor, orig_params, effect_verified=True):
-            recorded["d"] = undo_descriptor
-            return "undo-r"
-
-    monkeypatch.setattr(undo_mod, "get_undo_store", lambda: _Store())
 
     result = dp.routing_policy_update(
         application="app1", deployment="dep1", policy="prefix_aware"
     )
-    assert result["priorState"]["policy"] == "round_robin"
-    assert recorded["d"]["tool"] == "routing_policy_update"
-    assert recorded["d"]["params"]["policy"] == "round_robin"  # restore prior
-    assert result.get("_undo_id") == "undo-r"
+    assert "error" in result and "REST" in result["error"]
+    conn.put_ray.assert_not_called()
 
 
 @pytest.mark.unit

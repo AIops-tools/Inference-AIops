@@ -223,12 +223,16 @@ def test_diagnose_latency_spike_resilient():
 
 
 def _apps(num=3):
-    return {"applications": {"app1": {"deployments": {"dep1": {
-        "status": "HEALTHY",
-        "deployment_config": {"num_replicas": num,
-                              "autoscaling_config": {"min_replicas": 1, "max_replicas": 8}},
-        "replicas": [{"state": "RUNNING"}] * num,
-    }}}}}
+    return {"applications": {"app1": {
+        "deployed_app_config": {"name": "app1", "import_path": "app1:app",
+                                "route_prefix": "/app1",
+                                "deployments": [{"name": "dep1", "num_replicas": num}]},
+        "deployments": {"dep1": {
+            "status": "HEALTHY",
+            "deployment_config": {"num_replicas": num,
+                                  "autoscaling_config": {"min_replicas": 1, "max_replicas": 8}},
+            "replicas": [{"state": "RUNNING"}] * num,
+        }}}}}
 
 
 @pytest.mark.unit

@@ -14,10 +14,20 @@ import pytest
 
 from inference_aiops.ops import serve as ops
 
-# A representative Ray Serve /api/serve/applications/ payload.
+# A representative Ray Serve /api/serve/applications/ payload, matching the real
+# shape verified against Ray 2.56: the live status carries a per-deployment
+# ``deployment_config``, AND a declaratively-deployed app carries a
+# ``deployed_app_config`` (the ServeApplicationSchema) — the ONLY thing a write
+# can round-trip, since Ray's REST control plane is whole-config-declarative.
 _APPS = {
     "applications": {
         "llm": {
+            "deployed_app_config": {
+                "name": "llm",
+                "import_path": "vllm_app:app",
+                "route_prefix": "/llm",
+                "deployments": [{"name": "VLLMDeployment", "num_replicas": 3}],
+            },
             "deployments": {
                 "VLLMDeployment": {
                     "status": "HEALTHY",
@@ -29,10 +39,22 @@ _APPS = {
                                                "target_ongoing_requests": 8},
                     },
                 }
-            }
+            },
         }
     }
 }
+
+
+def _put_apps(conn) -> list[dict]:
+    """The applications list from the connection's last put_ray call."""
+    (path,) = conn.put_ray.call_args.args
+    assert path == "/api/serve/applications/", "writes must PUT the whole schema"
+    return conn.put_ray.call_args.kwargs["json"]["applications"]
+
+
+def _dep_entry(apps: list[dict], app: str, dep: str) -> dict:
+    cfg = next(a for a in apps if a["name"] == app)
+    return next(d for d in cfg["deployments"] if d["name"] == dep)
 
 
 def _conn_reading_apps():
@@ -80,15 +102,17 @@ def test_list_serve_deployments_read_failure_degrades():
 
 
 @pytest.mark.unit
-def test_scale_up_captures_prior_replica_count():
+def test_scale_up_puts_full_declarative_schema_and_captures_prior():
+    """Scale round-trips the whole ServeDeploySchema (Ray has no per-deployment
+    PUT), patching only the target deployment's num_replicas."""
     conn = _conn_reading_apps()
     out = ops.scale_replicas_up(conn, "llm", "VLLMDeployment", 5)
     assert out["action"] == "scale_replicas_up"
     assert out["numReplicas"] == 5
     assert out["priorState"] == {"numReplicas": 3}
-    (path,) = conn.put_ray.call_args.args
-    assert path == "/api/serve/applications/llm/deployments/VLLMDeployment"
-    assert conn.put_ray.call_args.kwargs["json"] == {"num_replicas": 5}
+    entry = _dep_entry(_put_apps(conn), "llm", "VLLMDeployment")
+    assert entry["num_replicas"] == 5
+    assert "autoscaling_config" not in entry  # fixed count clears autoscaling
 
 
 @pytest.mark.unit
@@ -97,16 +121,49 @@ def test_scale_to_zero_targets_zero_and_captures_prior():
     out = ops.scale_to_zero(conn, "llm", "VLLMDeployment")
     assert out["action"] == "scale_to_zero" and out["numReplicas"] == 0
     assert out["priorState"] == {"numReplicas": 3}
+    assert _dep_entry(_put_apps(conn), "llm", "VLLMDeployment")["num_replicas"] == 0
 
 
 @pytest.mark.unit
-def test_update_autoscale_config_builds_partial_body_and_prior():
+def test_update_autoscale_config_patches_config_and_captures_prior():
     conn = _conn_reading_apps()
     out = ops.update_autoscale_config(conn, "llm", "VLLMDeployment", max_replicas=10)
     assert out["applied"] == {"max_replicas": 10}
     assert out["priorState"]["maxReplicas"] == 6
-    (path,) = conn.put_ray.call_args.args
-    assert path.endswith("/autoscale")
+    entry = _dep_entry(_put_apps(conn), "llm", "VLLMDeployment")
+    assert entry["autoscaling_config"]["max_replicas"] == 10
+    assert "num_replicas" not in entry  # autoscaling and a fixed count are exclusive
+
+
+@pytest.mark.unit
+def test_drain_replica_refuses_no_rest_endpoint_exists():
+    """Ray Serve has no per-replica drain REST endpoint; the op must refuse
+    (teaching error) rather than POST to a path that 404s on every real Ray."""
+    from inference_aiops.connection import EngineCapabilityError
+
+    conn = _conn_reading_apps()
+    with pytest.raises(EngineCapabilityError, match="per-replica"):
+        ops.drain_replica(conn, "llm", "VLLMDeployment", "r-1")
+    conn.post_ray.assert_not_called()
+    conn.put_ray.assert_not_called()
+
+
+@pytest.mark.unit
+def test_scale_refuses_to_delete_an_imperative_bystander_app():
+    """If any app lacks a Serve config (imperatively deployed), a whole-schema
+    PUT would delete it — the write must refuse, not silently drop it."""
+    from inference_aiops.connection import EngineCapabilityError
+
+    conn = MagicMock(name="conn")
+    conn.get_ray.return_value = {
+        "applications": {
+            "llm": _APPS["applications"]["llm"],
+            "adhoc": {"deployments": {"D": {"replicas": [{"state": "RUNNING"}]}}},
+        }
+    }
+    with pytest.raises(EngineCapabilityError, match="imperatively"):
+        ops.scale_replicas_up(conn, "llm", "VLLMDeployment", 5)
+    conn.put_ray.assert_not_called()
 
 
 @pytest.mark.unit
@@ -132,14 +189,17 @@ def test_mcp_scale_to_zero_dry_run_does_not_write(monkeypatch):
 
 
 @pytest.mark.unit
-def test_mcp_drain_replica_dry_run_previews(monkeypatch):
+def test_mcp_drain_replica_dry_run_reports_unavailable(monkeypatch):
+    """Ray Serve has no per-replica drain REST endpoint, so the preview reports
+    unavailability (available=False) rather than a false 'wouldDrain' green."""
     from mcp_server.tools import serve as sv
 
     conn = MagicMock(name="conn")
     monkeypatch.setattr(sv, "_get_connection", lambda target=None: conn)
     out = sv.drain_replica(application="llm", deployment="d", replica_id="r-1", dry_run=True)
     assert out["dryRun"] is True
-    assert out["wouldDrain"] == {"application": "llm", "deployment": "d", "replicaId": "r-1"}
+    assert out["available"] is False
+    assert "per-replica" in out["reason"]
     conn.post_ray.assert_not_called()
 
 

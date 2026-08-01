@@ -89,20 +89,23 @@ def replica_restart(
     application: str, deployment: str, replica_id: str,
     dry_run: bool = False, target: Optional[str] = None
 ) -> dict:
-    """[WRITE][risk=high] Restart one wedged Serve replica (kills + respawns the actor).
+    """[WRITE][risk=high] Restart one Serve replica — NOT available over Ray's REST API.
 
-    Drops the replica's in-flight requests — pass dry_run=True to preview.
+    Ray Serve exposes no per-replica restart endpoint over REST; the controller
+    respawns unhealthy replicas on its own. This tool refuses with a teaching
+    error. To force a cycle, scale the deployment down then up, or redeploy. The
+    dry_run preview reports the same unavailability rather than a false green.
 
     Args:
         application: Serve application name.
         deployment: Deployment name.
         replica_id: Replica id (from replica_list).
-        dry_run: If True, preview without restarting.
+        dry_run: If True, report availability without attempting a restart.
         target: Inference target name from config; omit for the default.
     """
     conn = _get_connection(target)
     if dry_run:
-        return {"dryRun": True, "wouldRestart": {"application": application,
-                                                 "deployment": deployment,
-                                                 "replicaId": replica_id}}
+        return {"dryRun": True, "available": False,
+                "reason": ("Ray Serve has no per-replica restart REST endpoint; "
+                           "scale the deployment down then up, or redeploy.")}
     return ops.restart_replica(conn, application, deployment, replica_id)

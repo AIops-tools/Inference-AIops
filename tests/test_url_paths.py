@@ -25,49 +25,56 @@ class _Resp:
 
 
 @pytest.mark.unit
-def test_drain_replica_encodes_traversal_in_requested_url():
-    """Drive a real InferenceConnection with a fake client: the URL actually
-    requested must carry the encoded segment, never a raw ``../``."""
+def test_drain_replica_makes_no_request_no_endpoint_exists():
+    """Ray Serve has no per-replica drain REST endpoint, so a hostile replica id
+    cannot reach a URL at all — the op refuses before touching the transport."""
     from inference_aiops.config import TargetConfig
-    from inference_aiops.connection import InferenceConnection
+    from inference_aiops.connection import EngineCapabilityError, InferenceConnection
     from inference_aiops.ops import serve as ops
 
-    seen: dict[str, str] = {}
-
     class _Client:
+        def __init__(self) -> None:
+            self.calls = 0
+
         def request(self, method: str, url: str, **kwargs) -> _Resp:
-            seen["url"] = url
+            self.calls += 1
             return _Resp(200, {})
 
         def close(self) -> None:
             pass
 
-    conn = InferenceConnection(TargetConfig(name="t", host="gpu.local"), client=_Client())
-    ops.drain_replica(conn, "app1", "dep1", "../../api/admin")
-    assert "../" not in seen["url"]
-    assert "..%2F..%2Fapi%2Fadmin" in seen["url"]
+    client = _Client()
+    conn = InferenceConnection(TargetConfig(name="t", host="gpu.local"), client=client)
+    with pytest.raises(EngineCapabilityError):
+        ops.drain_replica(conn, "app1", "dep1", "../../api/admin")
+    assert client.calls == 0, "drain must not hit the transport at all"
 
 
 @pytest.mark.unit
-def test_undeploy_and_scale_paths_encode_hostile_ids():
+def test_serve_writes_carry_hostile_ids_in_the_body_not_the_url():
+    """Serve writes PUT the whole declarative schema to a CONSTANT path; the app
+    /deployment ids are dict keys and JSON values, never URL segments, so a
+    hostile id cannot traverse to another endpoint."""
     from inference_aiops.ops import deploy as dp
     from inference_aiops.ops import serve as sv
 
+    # deploy merges into the constant /applications/ path regardless of the name
     conn = MagicMock(name="conn")
     conn.get_ray.return_value = {"applications": {}}
-    dp.undeploy_model(conn, "../jobs")
-    (path,) = conn.delete_ray.call_args.args
-    assert "../" not in path and "..%2Fjobs" in path
+    dp.deploy_model(conn, "../jobs", "m:app")
+    (path,) = conn.put_ray.call_args.args
+    assert path == "/api/serve/applications/"
+    body = conn.put_ray.call_args.kwargs["json"]["applications"]
+    assert any(a.get("name") == "../jobs" for a in body)  # name lives in the body
+
+    # a hostile app id that does not exist is a lookup miss, never a traversal
+    from inference_aiops.connection import InferenceApiError
 
     conn2 = MagicMock(name="conn2")
-    dp.redeploy_deployment(conn2, "a/b", "c/d")
-    (path2,) = conn2.put_ray.call_args.args
-    assert path2 == "/api/serve/applications/a%2Fb/deployments/c%2Fd/redeploy"
-
-    conn3 = MagicMock(name="conn3")
-    sv.update_autoscale_config(conn3, "../x", "dep", min_replicas=1)
-    (path3,) = conn3.put_ray.call_args.args
-    assert "../" not in path3 and "..%2Fx" in path3
+    conn2.get_ray.return_value = {"applications": {}}
+    with pytest.raises(InferenceApiError):
+        sv.update_autoscale_config(conn2, "../x", "dep", min_replicas=1)
+    conn2.put_ray.assert_not_called()
 
 
 @pytest.mark.unit

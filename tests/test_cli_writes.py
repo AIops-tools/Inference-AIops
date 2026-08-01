@@ -41,11 +41,15 @@ def _audit_tools(db_path) -> list[str]:
 
 
 def _apps(num: int = 3) -> dict:
-    return {"applications": {"app1": {"deployments": {"dep1": {
-        "status": "HEALTHY",
-        "deployment_config": {"num_replicas": num},
-        "replicas": [{"state": "RUNNING"}] * num,
-    }}}}}
+    return {"applications": {"app1": {
+        "deployed_app_config": {"name": "app1", "import_path": "app1:app",
+                                "route_prefix": "/app1",
+                                "deployments": [{"name": "dep1", "num_replicas": num}]},
+        "deployments": {"dep1": {
+            "status": "HEALTHY",
+            "deployment_config": {"num_replicas": num},
+            "replicas": [{"state": "RUNNING"}] * num,
+        }}}}}
 
 
 def _no_mutating_call(conn) -> None:

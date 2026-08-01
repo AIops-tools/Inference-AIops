@@ -13,44 +13,59 @@ from __future__ import annotations
 
 from typing import Any
 
+from inference_aiops.connection import EngineCapabilityError
 from inference_aiops.ops._util import _seg, as_list, as_obj, opt_s, s
 from inference_aiops.ops.engine import require_control_plane
 
 _CLUSTER = "/api/cluster_status"
 _APPS = "/api/serve/applications/"
 _JOBS = "/api/jobs/"
-_NODES = "/api/nodes"
+_NODES = "/nodes"  # Ray dropped the /api prefix on this route; /api/nodes 404s
 
 
-def _num(source: Any, *keys: str) -> float | None:
-    """First numeric value found under any of ``keys`` in ``source`` (None if absent)."""
-    if not isinstance(source, dict):
-        return None
-    for key in keys:
-        val = source.get(key)
-        if isinstance(val, (int, float)) and not isinstance(val, bool):
-            return float(val)
-    return None
+def _agg_resource(usage_by_node: dict, resource: str) -> tuple[float | None, float | None]:
+    """Sum (used, total) of one resource across nodes, or (None, None) if absent.
+
+    Ray reports per-node usage as ``{node: {ResourceName: [used, total]}}``. A
+    resource no node reports (e.g. GPU on a CPU-only cluster) yields (None, None)
+    — unknown, not a fabricated zero.
+    """
+    used = total = 0.0
+    seen = False
+    for node in usage_by_node.values():
+        pair = node.get(resource) if isinstance(node, dict) else None
+        if (isinstance(pair, list) and len(pair) == 2
+                and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in pair)):
+            used += pair[0]
+            total += pair[1]
+            seen = True
+    return (round(used, 3), round(total, 3)) if seen else (None, None)
 
 
 def get_cluster_resources(conn: Any) -> dict:
-    """[READ] Cluster-wide CPU/GPU capacity + headroom (best-effort from cluster_status)."""
+    """[READ] Cluster-wide CPU/GPU capacity + headroom (from cluster_status).
+
+    Current Ray exposes resource totals/usage only under
+    ``clusterStatus.loadMetricsReport.usageByNode``. Older Ray put
+    ``clusterResources``/``availableResources`` at the ``data`` level — that shape
+    is gone, which is why reading it returned all-null on every live cluster.
+    """
     try:
         status = as_obj(conn.get_ray(_CLUSTER))
     except Exception as exc:  # noqa: BLE001 — report as partial
         return {"error": s(exc, 200)}
     data = as_obj(status.get("data", status))
-    total = as_obj(data.get("clusterResources") or data.get("totalResources"))
-    avail = as_obj(data.get("availableResources"))
-    pending = data.get("pendingPlacementGroups")
-    pending_count = (len(pending) if isinstance(pending, list)
-                     else _num(data, "pendingPlacementGroups"))
+    lmr = as_obj(as_obj(data.get("clusterStatus")).get("loadMetricsReport"))
+    usage_by_node = as_obj(lmr.get("usageByNode"))
+    used_cpu, total_cpu = _agg_resource(usage_by_node, "CPU")
+    used_gpu, total_gpu = _agg_resource(usage_by_node, "GPU")
+    pg = lmr.get("pgDemand")
     return {
-        "totalCpu": _num(total, "CPU"),
-        "availableCpu": _num(avail, "CPU"),
-        "totalGpu": _num(total, "GPU"),
-        "availableGpu": _num(avail, "GPU"),
-        "pendingPlacementGroups": pending_count,
+        "totalCpu": total_cpu,
+        "availableCpu": round(total_cpu - used_cpu, 3) if total_cpu is not None else None,
+        "totalGpu": total_gpu,
+        "availableGpu": round(total_gpu - used_gpu, 3) if total_gpu is not None else None,
+        "pendingPlacementGroups": len(pg) if isinstance(pg, list) else None,
     }
 
 
@@ -149,9 +164,10 @@ def _node_rows(payload: Any) -> list[dict]:
 
 
 def get_gpu_utilization(conn: Any) -> list[dict]:
-    """[READ] Per-node GPU count, utilisation %, and memory (best-effort from /api/nodes)."""
+    """[READ] Per-node GPU count, utilisation %, and memory (from the nodes summary)."""
     try:
-        return [_gpu_row(node) for node in _node_rows(conn.get_ray(_NODES))]
+        return [_gpu_row(node) for node in
+                _node_rows(conn.get_ray(_NODES, params={"view": "summary"}))]
     except Exception as exc:  # noqa: BLE001 — report as partial
         return [{"error": s(exc, 200)}]
 
@@ -167,12 +183,16 @@ def cancel_job(conn: Any, job_id: str) -> dict:
 
 
 def restart_replica(conn: Any, application: str, deployment: str, replica_id: str) -> dict:
-    """[WRITE][high] Restart one wedged Serve replica (kills + respawns the actor)."""
+    """[WRITE][high] Restart one wedged Serve replica — NOT available over Ray's REST API.
+
+    Like per-replica drain, Ray Serve exposes no per-replica restart endpoint over
+    REST (the old ``.../replicas/{id}/restart`` POST 404s on every real Ray). The
+    controller restarts unhealthy replicas on its own; to force a cycle, scale the
+    deployment down and back up, or redeploy. Refuse rather than invent an endpoint.
+    """
     require_control_plane(conn, "replica_restart")
-    conn.post_ray(
-        f"{_APPS}{_seg(application)}/deployments/{_seg(deployment)}"
-        f"/replicas/{_seg(replica_id)}/restart",
-        json={},
-    )
-    return {"action": "replica_restart", "application": s(application),
-            "deployment": s(deployment), "replicaId": s(replica_id)}
+    raise EngineCapabilityError(
+        "Ray Serve's REST API cannot restart an individual replica — it has no "
+        "per-replica endpoint. The controller already respawns unhealthy replicas; "
+        f"to force-cycle replica '{replica_id}' of '{application}/{deployment}', "
+        "scale the deployment down then up, or redeploy.")

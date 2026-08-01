@@ -228,19 +228,25 @@ def drain_replica(
     application: str, deployment: str, replica_id: str,
     dry_run: bool = False, target: Optional[str] = None
 ) -> dict:
-    """[WRITE][risk=high] Gracefully drain one replica (finish in-flight, take no new).
+    """[WRITE][risk=high] Drain one replica — NOT available over Ray's REST API.
 
-    Pass dry_run=True to preview.
+    Ray Serve exposes no per-replica drain endpoint (only the whole-cluster
+    declarative config); individual-replica draining is a Python-API capability
+    only. This tool refuses with a teaching error. To retire surplus replicas,
+    scale the deployment down — the controller drains them gracefully. The
+    dry_run preview reports the same unavailability rather than a false green.
 
     Args:
         application: Serve application name.
         deployment: Deployment name.
         replica_id: Replica id (from replica_list).
-        dry_run: If True, preview without draining.
+        dry_run: If True, report availability without attempting a drain.
         target: Inference target name from config; omit for the default.
     """
     conn = _get_connection(target)
     if dry_run:
-        return {"dryRun": True, "wouldDrain": {"application": application,
-                                               "deployment": deployment, "replicaId": replica_id}}
+        # No REST endpoint exists, so the preview must not claim it would drain.
+        return {"dryRun": True, "available": False,
+                "reason": ("Ray Serve has no per-replica drain REST endpoint; "
+                           "scale the deployment down to drain surplus replicas.")}
     return ops.drain_replica(conn, application, deployment, replica_id)

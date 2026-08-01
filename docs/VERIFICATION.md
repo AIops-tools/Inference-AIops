@@ -1,17 +1,64 @@
 # Live verification — inference-aiops
 
-`inference-aiops` is published on PyPI, the MCP Registry, and ClawHub. What it
-has **not** had is an end-to-end run against a live GPU serving cluster:
+`inference-aiops` has two planes: a **Ray control plane** (Serve + jobs + cluster,
+port 8265) and a **vLLM engine plane** (OpenAI JSON + Prometheus `/metrics`, port
+8000). As of 2026-08-01 the **Ray control plane is live-verified** against a real
+Ray cluster; the vLLM engine plane still needs a GPU and remains mock-only.
 
-> The code is exercised by a mock-only test suite (`uv run pytest`, no real vLLM
-> and no real Ray). It has not yet been validated end-to-end against a live
-> inference cluster. Until it has, we do not claim it works against real
-> serving endpoints.
+## ✅ Ray control plane — live-verified against real Ray 2.56.1 (2026-08-01)
 
-This document defines exactly what a live verification run must cover, and the
-criteria for recording this tool as live-verified. It is deliberately
-checklist-shaped so the result is reproducible and auditable — not a subjective
-"seems fine".
+Verified against a real `rayproject/ray:2.56.1` head (native x86_64, no GPU),
+driven through the real governed CLI + ops + MCP path with a declaratively
+deployed Serve app. **This run found that essentially the ENTIRE Ray control
+plane was built against wrong or nonexistent REST endpoints — the tool had never
+worked against a real Ray cluster.** Ten distinct bugs, all fixed and
+regression-tested; the write fixes verified end-to-end (change landed on the
+cluster, then reverted):
+
+**Serve writes — Ray Serve's REST control plane is DECLARATIVE (only
+`PUT /api/serve/applications/`, the whole ServeDeploySchema); there are no
+per-deployment or per-replica endpoints.** The old code targeted invented paths:
+
+1. `scale_replicas_up/down`, `scale_to_zero` — PUT `.../deployments/{dep}` (404
+   on every real Ray). Now: GET all app configs → patch the target deployment's
+   `num_replicas` → PUT the whole schema. **Live: scaled 2→3 (cluster reconciled),
+   audit row, `undo_apply` → back to 2, `effectVerified`.**
+2. `update_autoscale_config` — PUT `.../deployments/{dep}/autoscale` (404). Now the
+   same declarative round-trip on `autoscaling_config`.
+3. `deploy_model` — PUT a bare `{name, import_path, num_replicas}` (400: not a
+   ServeDeploySchema). Now merges the app into the full schema, PRESERVING other
+   apps. **Live: deployed a 2nd app without deleting the first.** (Signature lost
+   `num_replicas` — Ray takes replica counts per-deployment; set them via `scale`.)
+4. `undeploy_model` — DELETE `.../applications/{app}` (404; Ray has no per-app
+   delete). Now PUTs the schema WITHOUT that app. **Live: removed only the target.**
+5. `redeploy_deployment` — PUT `.../deployments/{dep}/redeploy` (404). Now re-PUTs
+   the app's current config (a real reconcile).
+6. `drain_replica`, `restart_replica` — POST `.../replicas/{id}/drain|restart`
+   (404; no per-replica REST endpoint exists). Now refuse with a teaching
+   `EngineCapabilityError` (scale down / redeploy instead). **Live: both refuse.**
+7. `update_routing_policy` — PUT `.../deployments/{dep}/routing` (404; routing is a
+   code-level `@serve.deployment` option, not REST-settable). Now refuses honestly.
+
+**Ray reads:**
+
+8. `get_cluster_resources` — read `data.clusterResources`/`availableResources`,
+   fields that **no longer exist** in current Ray → returned all-null on every live
+   cluster (bug class #7). Now sums
+   `clusterStatus.loadMetricsReport.usageByNode` (`{res: [used, total]}`). **Live:
+   totalCpu 2.0 / availableCpu 1.6 matches the cluster; GPU null on a CPU-only
+   node — unknown, not a fabricated 0.**
+9. `get_gpu_utilization` — hit `/api/nodes` (404; the route is now `/nodes`). Fixed
+   to `/nodes?view=summary`. **Live: returns the real node, `gpuCount: 0`.**
+10. A guardrail added along the way: a single-app change refuses if ANY app is
+    imperatively deployed (no `deployed_app_config`), because the whole-schema PUT
+    would otherwise silently delete that bystander app.
+
+Not covered by this run: the **vLLM engine plane** (metrics RCA, KV-cache, TTFT/
+TPOT, engine writes) — needs a real GPU-backed vLLM, still mock-only.
+
+> The engine plane is exercised by a mock-only test suite (no real vLLM). Until it
+> is run against a GPU-backed engine, we do not claim it works against real
+> serving endpoints. The checklist below still stands for that half.
 
 ## What the mock suite already guarantees
 

@@ -13,7 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from inference_aiops.ops._util import _seg, as_obj, opt_s, s
+from inference_aiops.connection import EngineCapabilityError, InferenceApiError
+from inference_aiops.ops._util import as_obj, opt_s, s
 from inference_aiops.ops.engine import require_control_plane
 
 _APPS = "/api/serve/applications/"
@@ -95,14 +96,81 @@ def get_autoscale_config(conn: Any, application: str, deployment: str) -> dict:
 
 
 # ── writes ───────────────────────────────────────────────────────────────
+#
+# Ray Serve's REST control plane is DECLARATIVE: the only mutating endpoint is
+# ``PUT /api/serve/applications/``, which replaces the whole ServeDeploySchema.
+# There are NO per-deployment or per-replica REST endpoints (an earlier version
+# of this module PUT to ``.../deployments/{name}`` and POSTed to
+# ``.../replicas/{id}/drain`` — both 404 on every real Ray, confirmed against
+# Ray 2.56). To change one deployment we fetch every app's declarative config,
+# patch the target, and PUT them all back.
+
+
+def _all_app_configs(conn: Any) -> dict[str, dict]:
+    """Return ``{app_name: declarative_config_copy}`` for every deployed app.
+
+    The whole-schema PUT (the only mutating Serve endpoint) replaces EVERY app,
+    so any write built on it must be able to reconstruct every app or it would
+    silently delete the ones it dropped. An app deployed imperatively
+    (``serve.run``) has no ``deployed_app_config`` and cannot be reconstructed —
+    so we refuse the whole operation rather than delete a bystander. Copies are
+    returned so the fetched status blob is never mutated.
+    """
+    apps = as_obj(conn.get_ray(_APPS)).get("applications", {})
+    out: dict[str, dict] = {}
+    for name, app in (apps if isinstance(apps, dict) else {}).items():
+        cfg = (app or {}).get("deployed_app_config")
+        if not isinstance(cfg, dict):
+            raise EngineCapabilityError(
+                f"Application '{name}' has no Serve config — it was deployed "
+                f"imperatively (serve.run), not from a Serve config. Ray's REST "
+                f"control plane cannot modify it, and any single-app change means "
+                f"re-submitting all apps, which would delete '{name}'. Refusing. "
+                f"Redeploy it declaratively to manage it here.")
+        cfg = dict(cfg)
+        cfg["deployments"] = [dict(d) for d in (cfg.get("deployments") or [])]
+        out[name] = cfg
+    return out
+
+
+def _app_configs_for_put(conn: Any, application: str) -> tuple[list[dict], dict]:
+    """Full app-config list plus the target's config (the same dict in the list).
+
+    The caller patches ``target_cfg`` in place, then PUTs the returned list.
+    """
+    configs = _all_app_configs(conn)
+    if application not in configs:
+        raise InferenceApiError(
+            f"Application '{application}' not found on this Ray cluster.",
+            status_code=404, path=_APPS)
+    return list(configs.values()), configs[application]
+
+
+def _deployment_entry(target_cfg: dict, deployment: str) -> dict:
+    """Return the deployment's entry in an app config, creating it if implicit.
+
+    Ray omits deployments that run fully on defaults, so a first-time scale of
+    such a deployment has no entry to patch — add one keyed by name.
+    """
+    for entry in target_cfg["deployments"]:
+        if entry.get("name") == deployment:
+            return entry
+    entry = {"name": deployment}
+    target_cfg["deployments"].append(entry)
+    return entry
 
 
 def _set_replicas(conn: Any, application: str, deployment: str, num: int) -> dict:
-    """PUT a new replica count, capturing the prior count for undo/audit."""
+    """Set a fixed replica count via the declarative config, capturing prior."""
     require_control_plane(conn, "scale_replicas")
     prior = _find(conn, application, deployment).get("numReplicas")
-    conn.put_ray(f"{_APPS}{_seg(application)}/deployments/{_seg(deployment)}",
-                 json={"num_replicas": num})
+    configs, target_cfg = _app_configs_for_put(conn, application)
+    entry = _deployment_entry(target_cfg, deployment)
+    # num_replicas and autoscaling_config are mutually exclusive in Ray Serve;
+    # an explicit scale pins a fixed count, so drop any autoscaling on this dep.
+    entry.pop("autoscaling_config", None)
+    entry["num_replicas"] = num
+    conn.put_ray(_APPS, json={"applications": configs})
     return {"application": s(application), "deployment": s(deployment),
             "numReplicas": num, "priorState": {"numReplicas": prior}}
 
@@ -139,7 +207,14 @@ def update_autoscale_config(
         body["max_replicas"] = max_replicas
     if target_ongoing_requests is not None:
         body["target_ongoing_requests"] = target_ongoing_requests
-    conn.put_ray(f"{_APPS}{_seg(application)}/deployments/{_seg(deployment)}/autoscale", json=body)
+    configs, target_cfg = _app_configs_for_put(conn, application)
+    entry = _deployment_entry(target_cfg, deployment)
+    merged = dict(entry.get("autoscaling_config") or {})
+    merged.update(body)
+    # autoscaling_config and a fixed num_replicas are mutually exclusive in Ray.
+    entry.pop("num_replicas", None)
+    entry["autoscaling_config"] = merged
+    conn.put_ray(_APPS, json={"applications": configs})
     return {"action": "update_autoscale_config", "application": s(application),
             "deployment": s(deployment), "applied": body,
             "priorState": {"minReplicas": prior.get("minReplicas"),
@@ -148,12 +223,19 @@ def update_autoscale_config(
 
 
 def drain_replica(conn: Any, application: str, deployment: str, replica_id: str) -> dict:
-    """[WRITE][high] Gracefully drain one replica (finish in-flight, take no new)."""
+    """[WRITE][high] Gracefully drain one replica (finish in-flight, take no new).
+
+    Ray Serve's REST control plane exposes NO per-replica drain — there is no
+    endpoint to reach one replica over HTTP (the old ``.../replicas/{id}/drain``
+    POST 404s on every real Ray). Individual-replica draining is a Python-API
+    capability only. Rather than invent an endpoint, refuse with a teaching
+    error: scaling the deployment down lets the controller drain surplus
+    replicas gracefully (``graceful_shutdown_timeout_s``).
+    """
     require_control_plane(conn, "drain_replica")
-    conn.post_ray(
-        f"{_APPS}{_seg(application)}/deployments/{_seg(deployment)}"
-        f"/replicas/{_seg(replica_id)}/drain",
-        json={},
-    )
-    return {"action": "drain_replica", "application": s(application),
-            "deployment": s(deployment), "replicaId": s(replica_id)}
+    raise EngineCapabilityError(
+        "Ray Serve's REST API cannot drain an individual replica — it has no "
+        "per-replica endpoint (only the whole-cluster declarative config). To "
+        f"retire replica '{replica_id}' of '{application}/{deployment}', scale "
+        "the deployment down: the controller drains the surplus replicas "
+        "gracefully. Per-replica drain is available only via Ray's Python API.")

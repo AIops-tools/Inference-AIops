@@ -30,17 +30,20 @@ def _routing_undo(params: dict[str, Any], result: Any) -> Optional[dict]:
 @governed_tool(risk_level="medium")
 @tool_errors("dict")
 def model_deploy(
-    application: str, import_path: str, num_replicas: int = 1, target: Optional[str] = None
+    application: str, import_path: str, target: Optional[str] = None
 ) -> dict:
     """[WRITE][risk=medium] Deploy a Serve application from an import path.
+
+    The app is merged into the cluster's declarative Serve config (existing apps
+    preserved). Replica counts come from the app's own config; set them afterward
+    with serve scale (deployment names are known only once the app materialises).
 
     Args:
         application: Serve application name to create/replace.
         import_path: Python import path of the Serve app (e.g. 'module:app').
-        num_replicas: Initial replica count for the deployment.
         target: Inference target name from config; omit for the default.
     """
-    return ops.deploy_model(_get_connection(target), application, import_path, num_replicas)
+    return ops.deploy_model(_get_connection(target), application, import_path)
 
 
 @mcp.tool()
@@ -94,16 +97,18 @@ def deployment_redeploy(
 def routing_policy_update(
     application: str, deployment: str, policy: str, target: Optional[str] = None
 ) -> dict:
-    """[WRITE][risk=medium] Switch a deployment's request-routing policy (reversible).
+    """[WRITE][risk=medium] Switch a deployment's request-routing policy.
 
-    Controls prefix-cache locality across replicas: 'prefix_aware' /
-    'session_affinity' keep a session on one replica (warm cache), 'round_robin'
-    spreads load evenly. Captures the prior policy for undo.
+    NOTE: Ray Serve's request-routing policy is a code-level option on the
+    @serve.deployment decorator, NOT a field settable over the Dashboard REST API
+    — there is no REST endpoint for it. This tool therefore refuses with a
+    teaching error rather than pretend; change the policy in the deployment's
+    source and redeploy.
 
     Args:
         application: Serve application name.
         deployment: Deployment name.
-        policy: New routing policy (prefix_aware / round_robin / session_affinity).
+        policy: Desired routing policy (prefix_aware / round_robin / session_affinity).
         target: Inference target name from config; omit for the default.
     """
     return ops.update_routing_policy(_get_connection(target), application, deployment, policy)
