@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — 2026-08-02
+
+### Changed (BREAKING)
+- **Requires MCP SDK 2.0** (`mcp[cli]>=2.0,<3.0`). `mcp.server.fastmcp` no longer exists in 2.0; the server is now built with `MCPServer` and reports its package version in the stdio handshake.
+- **`model_deploy` no longer takes `num_replicas`.** Ray derives replica counts from the application's own config, and the deployment names needed to set them are only known once the app materialises — use `serve scale` afterwards.
+- **`drain_replica`, `restart_replica` and `update_routing_policy` now refuse with a teaching error** instead of calling endpoints that do not exist. Ray Serve's REST control plane has no per-replica or routing-policy surface; per-replica draining is a Python-API capability only. Scaling a deployment down lets the controller drain surplus replicas gracefully.
+
+### Fixed
+- **`undo apply` works from the CLI.** Every write tool is imported lazily inside its own CLI command, so a CLI-driven undo ran in a process where the inverse tool was never registered and failed with "inverse tool is not registered" — for every write tool. Only the MCP entry point, which imports the whole server, worked. Found while live-verifying against a real cluster.
+- **An undetermined outcome is audited `unknown`, not `ok`.** The harness only classified a result as undetermined when the payload *also* carried an `error` key, so a write that looked successful but had not been confirmed was recorded as a success.
+- **The entire Ray Serve control plane called endpoints Ray has never had.** Live-verified against Ray 2.56.1: the REST control plane is **declarative** — the only mutating endpoint is `PUT /api/serve/applications/` with the whole `ServeDeploySchema`. The per-deployment and per-replica paths this tool used 404 on every real cluster, so scale, scale-to-zero, autoscale, deploy, undeploy, redeploy, drain, restart and routing **could never have worked**. All rebuilt on the real API: fetch every app config, patch the target, PUT the whole set.
+- A single-app change is now **refused** when another app was deployed imperatively (`serve.run`) rather than from a Serve config, because the whole-schema PUT would silently delete that bystander.
+- `get_cluster_resources` read fields that no longer exist and returned all-null on every live cluster; it now reads `clusterStatus.loadMetricsReport.usageByNode`. A resource no node reports yields `null`, not a fabricated `0`.
+- `get_gpu_utilization` used `/api/nodes`, which 404s; the route is `/nodes`.
+
+
 ## v0.6.0 — 2026-07-21
 
 ### Changed (BREAKING)
