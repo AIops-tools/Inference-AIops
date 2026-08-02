@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — 2026-08-02
+## v0.7.0 — 2026-08-02
 
 ### Changed (BREAKING)
 - **Requires MCP SDK 2.0** (`mcp[cli]>=2.0,<3.0`). `mcp.server.fastmcp` no longer exists in 2.0; the server is now built with `MCPServer` and reports its package version in the stdio handshake.
@@ -42,7 +42,7 @@ See RELEASE_NOTES.md for the full detail.
 - **New:** SGLang + TGI serving-engine platforms.
 - **Undo executor**: `undo list` / `undo apply <id>` (CLI + MCP) — apply a recorded replayable inverse; the dispatched inverse is re-gated by its own risk tier; single-use, dry-run, double-confirm, both wrapper + inverse audited.
 
-## Unreleased
+## v0.7.0 — 2026-08-02
 
 ### Added
 - **SGLang and TGI serving engines** alongside vLLM + Ray. A target now declares an
