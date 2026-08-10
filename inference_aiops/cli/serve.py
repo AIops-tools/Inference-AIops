@@ -10,6 +10,7 @@ import typer
 from inference_aiops.cli._common import (
     DryRunOption,
     TargetOption,
+    checked,
     cli_errors,
     console,
     double_confirm,
@@ -71,9 +72,9 @@ def serve_scale(
             parameters={"from_replicas": preview.get("from"),
                         "to_replicas": preview.get("to")})
         return
-    console.print_json(json.dumps(gov.scale_replicas_up(
+    console.print_json(json.dumps(checked(gov.scale_replicas_up(
         application=application, deployment=deployment,
-        num_replicas=num_replicas, target=target)))
+        num_replicas=num_replicas, target=target))))
 
 
 @serve_app.command("scale-to-zero")
@@ -97,5 +98,5 @@ def serve_scale_zero(
                         "to_replicas": preview.get("to")})
         return
     double_confirm("scale to zero", f"{application}/{deployment}")
-    console.print_json(json.dumps(gov.scale_to_zero(
-        application=application, deployment=deployment, target=target)))
+    console.print_json(json.dumps(checked(gov.scale_to_zero(
+        application=application, deployment=deployment, target=target))))
