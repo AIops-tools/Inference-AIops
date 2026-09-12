@@ -69,6 +69,8 @@ openclaw plugins install clawhub:@aiops-tools/inference-aiops
 openclaw skills info inference-aiops          # expect: Visible to model: yes
 ```
 
+Needs `uvx` on `PATH`: the MCP server is fetched with uv, pinned to this release.
+
 ## When to Use This Skill
 
 - Triage a cluster (`overview`): Serve deployments, total replicas, queue backpressure
