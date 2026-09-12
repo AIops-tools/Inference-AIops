@@ -121,6 +121,19 @@ The MCP server is fetched with [uv](https://docs.astral.sh/uv/) and pinned to th
 package version this plugin declares, so an audit row can be traced back to the
 code that wrote it. Credentials are still configured with `inference-aiops init` — see below.
 
+### As an OpenClaw plugin
+
+The same bundle is published on [ClawHub](https://clawhub.ai/plugins), where one
+install delivers the skill and its MCP server together:
+
+```bash
+openclaw plugins install clawhub:@aiops-tools/inference-aiops
+openclaw skills info inference-aiops          # expect: Visible to model: yes
+```
+
+Restart the OpenClaw gateway afterwards so it loads the plugin. Credentials are
+configured exactly as below.
+
 ### As a CLI or standalone MCP server
 
 ```bash
@@ -137,6 +150,11 @@ Run as an MCP server (stdio) for the full 39-tool surface:
 export INFERENCE_AIOPS_MASTER_PASSWORD=...   # only if a bearer token is stored
 inference-aiops mcp
 ```
+
+> **Where that password then lives**: an exported variable is readable by
+> every process this shell starts and is recorded by shell history. On a
+> shared or long-lived host, prefer the interactive prompt, or inject it from
+> a secret manager for the life of the one command that needs it.
 
 The CLI is a convenience subset (`init`, `overview`, `serve …`, `metrics …`,
 `secret …`, `doctor`, `mcp`); the full 39 tools are exposed via the MCP server.

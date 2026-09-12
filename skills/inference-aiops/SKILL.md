@@ -62,6 +62,13 @@ inference-aiops init       # interactive wizard: engine (vllm/sglang/tgi) + host
 inference-aiops doctor     # vLLM: probes Ray + vLLM; SGLang/TGI: engine health + inventory
 ```
 
+Or as an OpenClaw plugin, which installs this skill and its MCP server together:
+
+```bash
+openclaw plugins install clawhub:@aiops-tools/inference-aiops
+openclaw skills info inference-aiops          # expect: Visible to model: yes
+```
+
 ## When to Use This Skill
 
 - Triage a cluster (`overview`): Serve deployments, total replicas, queue backpressure
