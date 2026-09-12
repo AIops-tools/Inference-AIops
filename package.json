@@ -1,0 +1,20 @@
+{
+  "name": "@aiops-tools/inference-aiops",
+  "version": "0.10.0",
+  "description": "Governed GPU inference ops (vLLM + Ray Serve): latency RCA, scaling, drain, 39 tools.",
+  "private": true,
+  "license": "MIT",
+  "homepage": "https://github.com/AIops-tools/Inference-AIops",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AIops-tools/Inference-AIops.git"
+  },
+  "openclaw": {
+    "compat": {
+      "pluginApi": ">=2026.3.24-beta.2"
+    },
+    "build": {
+      "openclawVersion": "2026.3.24-beta.2"
+    }
+  }
+}

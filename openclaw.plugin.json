@@ -1,0 +1,24 @@
+{
+  "id": "inference-aiops",
+  "name": "Inference AIops",
+  "description": "Governed GPU inference ops (vLLM + Ray Serve): latency RCA, scaling, drain, 39 tools.",
+  "skills": [
+    "./skills"
+  ],
+  "mcpServers": {
+    "inference-aiops": {
+      "transport": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "inference-aiops==0.10.0",
+        "inference-aiops-mcp"
+      ]
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

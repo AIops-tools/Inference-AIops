@@ -17,7 +17,7 @@ installer:
 argument-hint: "[deployment/model name or describe your inference-cluster task]"
 allowed-tools:
   - Bash
-metadata: {"openclaw":{"requires":{"env":["INFERENCE_AIOPS_CONFIG"],"bins":["inference-aiops"],"config":["~/.inference-aiops/config.yaml"]},"optional":{"env":["INFERENCE_AIOPS_MASTER_PASSWORD"],"config":["~/.inference-aiops/secrets.enc"]},"primaryEnv":"INFERENCE_AIOPS_CONFIG","homepage":"https://github.com/AIops-tools/Inference-AIops","emoji":"🚀","os":["macos","linux"]}}
+metadata: {"openclaw":{"requires":{"anyBins":["inference-aiops","uvx"]},"optional":{"env":["INFERENCE_AIOPS_CONFIG","INFERENCE_AIOPS_MASTER_PASSWORD"]},"homepage":"https://github.com/AIops-tools/Inference-AIops","emoji":"🚀","os":["macos","linux"]}}
 compatibility: >
   Standalone, self-governed GPU-inference operations. The governance harness (audit, policy, token/runaway budget, undo, risk-tiers) is bundled in the package — no external skill-family dependency.
   All write operations are audited to a local SQLite DB under ~/.inference-aiops/ (relocatable via INFERENCE_AIOPS_HOME).
