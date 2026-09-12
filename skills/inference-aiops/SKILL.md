@@ -65,7 +65,7 @@ inference-aiops doctor     # vLLM: probes Ray + vLLM; SGLang/TGI: engine health 
 Or as an OpenClaw plugin, which installs this skill and its MCP server together:
 
 ```bash
-openclaw plugins install clawhub:@aiops-tools/inference-aiops
+openclaw plugins install clawhub:@zw008/inference-aiops
 openclaw skills info inference-aiops          # expect: Visible to model: yes
 ```
 

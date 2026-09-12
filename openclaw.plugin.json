@@ -11,7 +11,7 @@
       "command": "uvx",
       "args": [
         "--from",
-        "inference-aiops==0.10.1",
+        "inference-aiops==0.10.2",
         "inference-aiops-mcp"
       ]
     }
