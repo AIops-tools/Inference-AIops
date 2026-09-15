@@ -2,7 +2,7 @@
   "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "inference-aiops",
   "displayName": "Inference AIops",
-  "version": "0.10.2",
+  "version": "0.10.3",
   "description": "Governed GPU inference ops (vLLM + Ray Serve): latency RCA, scaling, drain, 39 tools.",
   "author": {
     "name": "Wei Zhou",
