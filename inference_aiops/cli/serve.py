@@ -10,6 +10,7 @@ import typer
 from inference_aiops.cli._common import (
     DryRunOption,
     TargetOption,
+    audited,
     checked,
     cli_errors,
     console,
@@ -30,6 +31,7 @@ DepArg = Annotated[str, typer.Argument(help="Deployment name")]
 
 @serve_app.command("list")
 @cli_errors
+@audited
 def serve_list(target: TargetOption = None) -> None:
     """List Ray Serve deployments."""
     from inference_aiops.ops import serve as ops
@@ -40,6 +42,7 @@ def serve_list(target: TargetOption = None) -> None:
 
 @serve_app.command("status")
 @cli_errors
+@audited
 def serve_status(application: AppArg, deployment: DepArg, target: TargetOption = None) -> None:
     """Show one deployment's status + replica count."""
     from inference_aiops.ops import serve as ops

@@ -6,7 +6,7 @@ import json
 
 import typer
 
-from inference_aiops.cli._common import TargetOption, cli_errors, console, get_connection
+from inference_aiops.cli._common import TargetOption, audited, cli_errors, console, get_connection
 
 metrics_app = typer.Typer(
     name="metrics",
@@ -17,6 +17,7 @@ metrics_app = typer.Typer(
 
 @metrics_app.command("requests")
 @cli_errors
+@audited
 def metrics_requests(target: TargetOption = None) -> None:
     """TTFT / TPOT / e2e latency + generation-token totals."""
     from inference_aiops.ops import metrics as ops
@@ -27,6 +28,7 @@ def metrics_requests(target: TargetOption = None) -> None:
 
 @metrics_app.command("queue")
 @cli_errors
+@audited
 def metrics_queue(target: TargetOption = None) -> None:
     """Running vs waiting requests (backpressure signal)."""
     from inference_aiops.ops import metrics as ops
@@ -37,6 +39,7 @@ def metrics_queue(target: TargetOption = None) -> None:
 
 @metrics_app.command("diagnose")
 @cli_errors
+@audited
 def metrics_diagnose(target: TargetOption = None) -> None:
     """RCA: rank the probable cause of a latency spike + the knob to turn."""
     from inference_aiops.ops import metrics as ops

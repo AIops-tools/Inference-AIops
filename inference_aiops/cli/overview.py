@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 
-from inference_aiops.cli._common import TargetOption, cli_errors, console, get_connection
+from inference_aiops.cli._common import TargetOption, audited, cli_errors, console, get_connection
 
 
 @cli_errors
+@audited
 def overview_cmd(target: TargetOption = None) -> None:
     """One-shot stack summary: deployments, total replicas, queue backpressure."""
     from inference_aiops.ops import overview as ops
