@@ -3,6 +3,11 @@
 ## Unreleased
 
 ### Fixed
+- The "confirm before anything disruptive" row promised a CLI double confirmation for
+  seven traffic-affecting tools; only `scale_to_zero` has a CLI command. The rest are
+  MCP-only, where there is no confirmation step, and the row sat in the table headed "do
+  not waste prompt budget on these". Corrected, `scale_replicas_down` added to the list it
+  omitted, and the copyable system prompt now asks the model to confirm them itself.
 - `diagnose_low_utilization` no longer reports "Idle — no traffic" and recommends
   `scale_to_zero` for an engine whose counters could not be read. `metric_latest`
   correctly returns `None` for an absent metric; `or 0.0` at the call site turned that

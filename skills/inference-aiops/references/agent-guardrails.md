@@ -33,7 +33,7 @@ What the tool *does* guarantee is that you can always see what happened:
 | "Tell me if the output was cut off" | `ray_job_list` returns `{"jobs": [...], "returned": N, "limit": L, "truncated": true/false}`. Truncation is measured against the full fetch, not guessed from a length coincidence. |
 | "Say when a metric isn't available" | Signals the engine does not expose come back as `null` rather than `0`. SGLang and TGI expose fewer metrics than vLLM; `diagnose_engine_latency` skips a signal it cannot read instead of fabricating it, and `signalsChecked` shows exactly what it looked at. |
 | "Don't suggest scaling on an engine that can't scale" | Multi-replica scale / drain / autoscale are Ray Serve control-plane actions. On a single-process engine (SGLang, TGI) those tools raise `EngineCapabilityError` with an explanation, rather than issuing a call that could never succeed. |
-| "Confirm before anything disruptive" | Traffic-affecting operations (`model_undeploy`, `deployment_redeploy`, `scale_to_zero`, `drain_replica`, `replica_restart`, `lora_unload`, `model_sleep`) require a `--dry-run`-able preview + double confirmation at the CLI. |
+| "Confirm before anything disruptive" | Every traffic-affecting operation (`model_undeploy`, `deployment_redeploy`, `scale_to_zero`, `scale_replicas_down`, `drain_replica`, `replica_restart`, `lora_unload`, `model_sleep`) takes `dry_run=True` for a preview and is `risk=high`. ⚠️ **The double confirmation is a CLI feature, and only `scale_to_zero` has a CLI command** — every other one is reachable only over MCP, where nothing prompts. Keep your own confirmation for those. |
 | "Log what you did" | Every call is audited to `~/.inference-aiops/audit.db` regardless of what the model says it did. |
 
 ## What still needs a prompt
@@ -65,6 +65,10 @@ READING RESULTS
 - When diagnose_engine_latency or diagnose_latency_spike returns probableCauses,
   work through them in the order given and cite the measured number in each
   cause's "signal" — do not substitute your own theory of the bottleneck.
+
+- Only `scale_to_zero` has a CLI command; every other traffic-affecting tool is MCP-only
+  and nothing will ask you to confirm it. Call it with `dry_run=True` first, show the
+  operator what would change, and wait for an explicit go-ahead.
 
 SCOPE
 - Separate observation from interpretation. State what the tools returned, then
