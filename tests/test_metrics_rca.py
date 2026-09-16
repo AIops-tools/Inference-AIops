@@ -134,3 +134,54 @@ def test_diagnose_functions_degrade_on_scrape_failure():
     conn = _conn(error=RuntimeError("down"))
     assert "error" in ops.diagnose_latency_spike(conn)
     assert "error" in ops.diagnose_low_utilization(conn)
+
+
+@pytest.mark.unit
+def test_unreadable_counters_never_read_as_an_idle_deployment():
+    """An engine exposing no vLLM counters used to produce "Idle — no traffic" and a
+    recommendation to scale serving capacity to zero, because `or 0.0` made an absent
+    counter identical to a measured zero."""
+    out = ops.diagnose_low_utilization(_conn({}))
+    assert "Cannot tell" in out["finding"]
+    assert "scale_to_zero" not in out["suggestedAction"]
+    assert out["signals"]["numRunning"] is None
+    assert "numRunning" in out["unreadableSignals"]
+
+
+@pytest.mark.unit
+def test_a_measured_zero_still_reads_as_idle():
+    """Positive control: the fix must not suppress the real idle verdict."""
+    out = ops.diagnose_low_utilization(_conn({
+        "vllm:num_requests_running": _series(0.0),
+        "vllm:num_requests_waiting": _series(0.0),
+    }))
+    assert "Idle" in out["finding"] and "scale_to_zero" in out["suggestedAction"]
+    assert out["unreadableSignals"] == ["kvUsage"]
+
+
+@pytest.mark.unit
+def test_an_unreported_queue_does_not_block_the_batching_verdict():
+    """Refuse only the conclusion whose evidence is missing: running > 0 already rules
+    out idle, so an absent queue depth must not turn into "cannot tell"."""
+    out = ops.diagnose_low_utilization(_conn({
+        "vllm:num_requests_running": _series(2.0),
+        "vllm:gpu_cache_usage_perc": _series(0.1),
+    }))
+    assert "Low batching" in out["finding"] and out["unreadableSignals"] == ["numWaiting"]
+
+
+@pytest.mark.unit
+def test_latency_rca_does_not_report_an_all_clear_it_could_not_measure():
+    out = ops.diagnose_latency_spike(_conn({}))
+    assert out["unreadableSignals"] == ["numWaiting", "kvUsage", "preemptions"]
+    assert "not evidence that the engine is healthy" in out["probableCauses"][0]["cause"]
+    assert out["signalsChecked"]["kvUsage"] is None
+
+    # Partial readings keep their verdict and name what was missing — withholding it
+    # there would make the tool useless on engines that expose most of the set.
+    partial = ops.diagnose_latency_spike(_conn({
+        "vllm:gpu_cache_usage_perc": _series(0.4),
+        "vllm:num_requests_waiting": _series(0.0),
+    }))
+    assert "No dominant bottleneck" in partial["probableCauses"][0]["cause"]
+    assert "Not measured: preemptions" in partial["probableCauses"][0]["cause"]

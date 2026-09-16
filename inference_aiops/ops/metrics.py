@@ -85,9 +85,17 @@ def diagnose_latency_spike(conn: Any) -> dict:
     except Exception as exc:  # noqa: BLE001 — report as partial
         return {"error": s(exc, 200)}
 
-    waiting = metric_latest(m, _WAITING) or 0.0
-    kv = metric_latest(m, _KV_USAGE) or 0.0
-    preempt = metric_sum(m, _PREEMPT) or 0.0
+    # Absent counters stay None: an engine that exposes none of these must not read as
+    # "nothing is wrong". The comparisons below treat None as "not measured", and the
+    # unreadable ones are named in the result.
+    waiting_raw = metric_latest(m, _WAITING)
+    kv_raw = metric_latest(m, _KV_USAGE)
+    preempt_raw = metric_sum(m, _PREEMPT)
+    unreadable = [n for n, v in (("numWaiting", waiting_raw), ("kvUsage", kv_raw),
+                                 ("preemptions", preempt_raw)) if v is None]
+    waiting = waiting_raw or 0.0
+    kv = kv_raw or 0.0
+    preempt = preempt_raw or 0.0
     hits = metric_sum(m, _PREFIX_HITS)
     queries = metric_sum(m, _PREFIX_QUERIES)
     hit_rate = (hits / queries) if hits and queries else None
@@ -116,15 +124,32 @@ def diagnose_latency_spike(conn: Any) -> dict:
             "signal": {"prefixCacheHitRate": round(hit_rate, 4)},
         })
     if not causes:
-        causes.append({
-            "cause": "No dominant bottleneck in queue / KV / prefix signals.",
-            "action": "Check GPU throttling and per-replica skew (get_gpu_utilization, "
-                      "list_replicas).",
-            "signal": {},
-        })
+        # "No dominant bottleneck" is a measurement, and must not be what an engine that
+        # reported none of these signals looks like.
+        if len(unreadable) == 3:
+            # Nothing was measurable, so there is no verdict to give. Withholding it only
+            # here keeps a partial-but-benign reading ("queue and KV are clean") useful.
+            causes.append({
+                "cause": f"No bottleneck could be ranked: the engine did not report "
+                         f"{', '.join(unreadable)}. An absent counter is not zero, so this "
+                         f"is not evidence that the engine is healthy.",
+                "action": "Confirm the engine exposes vLLM-compatible metrics before "
+                          "reading this diagnosis as an all-clear.",
+                "signal": {},
+            })
+        else:
+            note = (f" Not measured: {', '.join(unreadable)}." if unreadable else "")
+            causes.append({
+                "cause": f"No dominant bottleneck in the queue / KV / prefix signals the "
+                         f"engine reported.{note}",
+                "action": "Check GPU throttling and per-replica skew (get_gpu_utilization, "
+                          "list_replicas).",
+                "signal": {},
+            })
     return {"probableCauses": causes, "signalsChecked":
-            {"numWaiting": waiting, "kvUsage": kv, "preemptions": preempt,
-             "prefixCacheHitRate": round(hit_rate, 4) if hit_rate is not None else None}}
+            {"numWaiting": waiting_raw, "kvUsage": kv_raw, "preemptions": preempt_raw,
+             "prefixCacheHitRate": round(hit_rate, 4) if hit_rate is not None else None},
+            "unreadableSignals": unreadable}
 
 
 def diagnose_low_utilization(conn: Any) -> dict:
@@ -133,15 +158,28 @@ def diagnose_low_utilization(conn: Any) -> dict:
         m = conn.vllm_metrics()
     except Exception as exc:  # noqa: BLE001 — report as partial
         return {"error": s(exc, 200)}
-    waiting = metric_latest(m, _WAITING) or 0.0
-    running = metric_latest(m, _RUNNING) or 0.0
-    kv = metric_latest(m, _KV_USAGE) or 0.0
+    # metric_latest already returns None for a counter the engine did not expose.
+    # Coercing that to 0.0 made "not reported" identical to "genuinely zero", and the
+    # idle branch below then recommended scaling serving capacity to zero.
+    waiting = metric_latest(m, _WAITING)
+    running = metric_latest(m, _RUNNING)
+    kv = metric_latest(m, _KV_USAGE)
+    unreadable = [n for n, v in (("numRunning", running), ("numWaiting", waiting),
+                                 ("kvUsage", kv)) if v is None]
 
-    if running == 0 and waiting == 0:
+    # Refuse only the conclusion whose evidence is missing. `running > 0` already rules
+    # out idle, so an unreported queue depth does not block the batching verdict.
+    if running is None or (running == 0 and waiting is None):
+        missing = "numRunning" if running is None else "numWaiting"
+        finding = (f"Cannot tell whether this deployment is idle: the engine did not report "
+                   f"{missing}. An absent counter is not zero.")
+        action = ("Check the engine's /metrics endpoint and that it is a vLLM-compatible "
+                  "exporter. Do not scale this deployment down on the strength of this result.")
+    elif running == 0 and waiting == 0:
         finding = ("Idle — no traffic. If replicas are held warm for latency, "
                    "consider scale-to-zero to stop the cost bleed.")
         action = "scale_to_zero (if this deployment can tolerate cold starts)."
-    elif running > 0 and kv < 0.3:
+    elif running > 0 and kv is not None and kv < 0.3:
         finding = ("Low batching — few concurrent sequences and low KV usage means "
                    "the GPU is under-fed (utilisation < ~30%).")
         action = "Raise --max-num-seqs / consolidate replicas; route more traffic per replica."
@@ -149,4 +187,5 @@ def diagnose_low_utilization(conn: Any) -> dict:
         finding = "Utilisation looks reasonable for the current load."
         action = "No change indicated."
     return {"finding": finding, "suggestedAction": action,
-            "signals": {"numRunning": running, "numWaiting": waiting, "kvUsage": kv}}
+            "signals": {"numRunning": running, "numWaiting": waiting, "kvUsage": kv},
+            "unreadableSignals": unreadable}

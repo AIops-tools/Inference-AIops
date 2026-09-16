@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- `diagnose_low_utilization` no longer reports "Idle — no traffic" and recommends
+  `scale_to_zero` for an engine whose counters could not be read. `metric_latest`
+  correctly returns `None` for an absent metric; `or 0.0` at the call site turned that
+  into a measured zero, so an engine exposing no vLLM counters was advised to shut down
+  serving capacity. The refusal is scoped to the conclusion whose evidence is missing —
+  a known `numRunning > 0` still yields the batching verdict even when the queue depth
+  was not reported.
+- `diagnose_latency_spike` no longer answers "No dominant bottleneck" when it measured
+  nothing. With all three signals absent it says so and states that this is not evidence
+  of health; with a partial reading it keeps the verdict and names what was not measured.
+- Both now return `unreadableSignals`, and `signalsChecked` reports `null` rather than
+  `0.0` for a counter the engine did not expose.
+
 ## v0.10.3 — 2026-09-15
 
 ### Fixed
