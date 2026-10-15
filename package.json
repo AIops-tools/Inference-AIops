@@ -1,6 +1,6 @@
 {
   "name": "@zw008/inference-aiops",
-  "version": "0.10.5",
+  "version": "0.11.0",
   "description": "Governed GPU inference ops (vLLM + Ray Serve): latency RCA, scaling, drain, 39 tools.",
   "private": true,
   "license": "MIT",
