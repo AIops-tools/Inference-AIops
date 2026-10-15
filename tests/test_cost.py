@@ -41,7 +41,7 @@ def test_cost_per_token_insufficient_data_when_no_throughput():
 
 @pytest.mark.unit
 def test_cost_tool_is_governed_and_low_risk():
-    from mcp_server.tools import cost
+    from inference_aiops.mcp_server.tools import cost
 
     assert cost.cost_per_token._risk_level == "low"
     assert getattr(cost.cost_per_token, "_is_governed_tool", False)

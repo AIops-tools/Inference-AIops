@@ -1,7 +1,7 @@
 """CLI confirmed-write path — past dry-run, through governance, onto disk.
 
 The CLI write commands delegate real execution to the ``@governed_tool``
-functions in ``mcp_server.tools``. These tests drive a write command PAST the
+functions in ``inference_aiops.mcp_server.tools``. These tests drive a write command PAST the
 dry-run branch and the double-confirm prompts and assert the call really went
 through the governed path (audit row on disk) — the regression test for the
 "CLI writes were unaudited" line-wide fix.
@@ -80,7 +80,7 @@ def test_cli_scale_to_zero_dry_run_reads_and_audits_but_never_writes(gov_home, m
 
     conn = MagicMock(name="conn")
     conn.get_ray.return_value = _apps(num=3)
-    import mcp_server.tools.serve as gov_serve
+    import inference_aiops.mcp_server.tools.serve as gov_serve
 
     monkeypatch.setattr(gov_serve, "_get_connection", lambda target=None: conn)
     result = CliRunner().invoke(app, ["serve", "scale-to-zero", "app1", "dep1", "--dry-run"])
@@ -100,7 +100,7 @@ def test_cli_scale_to_zero_dry_run_reports_the_real_current_replica_count(
 
     conn = MagicMock(name="conn")
     conn.get_ray.return_value = _apps(num=7)
-    import mcp_server.tools.serve as gov_serve
+    import inference_aiops.mcp_server.tools.serve as gov_serve
 
     monkeypatch.setattr(gov_serve, "_get_connection", lambda target=None: conn)
     result = CliRunner().invoke(app, ["serve", "scale-to-zero", "app1", "dep1", "--dry-run"])
@@ -120,7 +120,7 @@ def test_cli_scale_to_zero_dry_run_records_no_undo_token(gov_home, monkeypatch):
 
     conn = MagicMock(name="conn")
     conn.get_ray.return_value = _apps(num=3)
-    import mcp_server.tools.serve as gov_serve
+    import inference_aiops.mcp_server.tools.serve as gov_serve
 
     monkeypatch.setattr(gov_serve, "_get_connection", lambda target=None: conn)
     CliRunner().invoke(app, ["serve", "scale-to-zero", "app1", "dep1", "--dry-run"])
@@ -145,7 +145,7 @@ def test_cli_scale_to_zero_dry_run_of_an_unknown_deployment_refuses_nonzero(
 
     conn = MagicMock(name="conn")
     conn.get_ray.return_value = {"applications": {}}
-    import mcp_server.tools.serve as gov_serve
+    import inference_aiops.mcp_server.tools.serve as gov_serve
 
     monkeypatch.setattr(gov_serve, "_get_connection", lambda target=None: conn)
     result = CliRunner().invoke(app, ["serve", "scale-to-zero", "nope", "dep1", "--dry-run"])
@@ -161,7 +161,7 @@ def test_cli_serve_scale_dry_run_reads_and_audits_but_never_writes(gov_home, mon
 
     conn = MagicMock(name="conn")
     conn.get_ray.return_value = _apps(num=2)
-    import mcp_server.tools.serve as gov_serve
+    import inference_aiops.mcp_server.tools.serve as gov_serve
 
     monkeypatch.setattr(gov_serve, "_get_connection", lambda target=None: conn)
     result = CliRunner().invoke(app, ["serve", "scale", "app1", "dep1", "5", "--dry-run"])
@@ -196,7 +196,7 @@ def test_cli_scale_to_zero_confirmed_goes_through_governance(gov_home, monkeypat
     conn = MagicMock(name="conn")
     conn.get_ray.return_value = _apps(num=3)
     conn.put_ray.return_value = {}
-    import mcp_server.tools.serve as gov_serve
+    import inference_aiops.mcp_server.tools.serve as gov_serve
 
     monkeypatch.setattr(gov_serve, "_get_connection", lambda target=None: conn)
     result = CliRunner().invoke(app, ["serve", "scale-to-zero", "app1", "dep1"], input="y\ny\n")
@@ -210,7 +210,7 @@ def test_cli_scale_to_zero_aborts_without_double_confirm(gov_home, monkeypatch):
     from inference_aiops.cli import app
 
     conn = MagicMock(name="conn")
-    import mcp_server.tools.serve as gov_serve
+    import inference_aiops.mcp_server.tools.serve as gov_serve
 
     monkeypatch.setattr(gov_serve, "_get_connection", lambda target=None: conn)
     result = CliRunner().invoke(app, ["serve", "scale-to-zero", "app1", "dep1"], input="y\nn\n")

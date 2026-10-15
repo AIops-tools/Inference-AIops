@@ -168,7 +168,7 @@ def test_scale_refuses_to_delete_an_imperative_bystander_app():
 
 @pytest.mark.unit
 def test_scale_write_tools_risk_tiers():
-    from mcp_server.tools import serve as sv
+    from inference_aiops.mcp_server.tools import serve as sv
 
     assert sv.scale_replicas_up._risk_level == "medium"
     assert sv.scale_replicas_down._risk_level == "high"
@@ -179,7 +179,7 @@ def test_scale_write_tools_risk_tiers():
 
 @pytest.mark.unit
 def test_mcp_scale_to_zero_dry_run_does_not_write(monkeypatch):
-    from mcp_server.tools import serve as sv
+    from inference_aiops.mcp_server.tools import serve as sv
 
     conn = _conn_reading_apps()
     monkeypatch.setattr(sv, "_get_connection", lambda target=None: conn)
@@ -192,7 +192,7 @@ def test_mcp_scale_to_zero_dry_run_does_not_write(monkeypatch):
 def test_mcp_drain_replica_dry_run_reports_unavailable(monkeypatch):
     """Ray Serve has no per-replica drain REST endpoint, so the preview reports
     unavailability (available=False) rather than a false 'wouldDrain' green."""
-    from mcp_server.tools import serve as sv
+    from inference_aiops.mcp_server.tools import serve as sv
 
     conn = MagicMock(name="conn")
     monkeypatch.setattr(sv, "_get_connection", lambda target=None: conn)
@@ -205,7 +205,7 @@ def test_mcp_drain_replica_dry_run_reports_unavailable(monkeypatch):
 
 @pytest.mark.unit
 def test_replica_undo_inverts_scale_to_prior_count():
-    from mcp_server.tools import serve as sv
+    from inference_aiops.mcp_server.tools import serve as sv
 
     undo = sv._replica_undo(
         {"application": "llm", "deployment": "d"},
@@ -219,7 +219,7 @@ def test_replica_undo_inverts_scale_to_prior_count():
 
 @pytest.mark.unit
 def test_autoscale_undo_restores_prior_bounds():
-    from mcp_server.tools import serve as sv
+    from inference_aiops.mcp_server.tools import serve as sv
 
     undo = sv._autoscale_undo(
         {"application": "llm", "deployment": "d"},

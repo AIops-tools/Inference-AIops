@@ -50,7 +50,7 @@ def test_lora_load_posts_to_load_endpoint():
 
 @pytest.mark.unit
 def test_model_write_tools_have_correct_risk_tiers():
-    from mcp_server.tools import models as md
+    from inference_aiops.mcp_server.tools import models as md
 
     assert md.lora_load._risk_level == "medium"
     assert md.lora_unload._risk_level == "high"
@@ -61,7 +61,7 @@ def test_model_write_tools_have_correct_risk_tiers():
 
 @pytest.mark.unit
 def test_lora_unload_dry_run_does_not_mutate(monkeypatch):
-    from mcp_server.tools import models as md
+    from inference_aiops.mcp_server.tools import models as md
 
     conn = MagicMock(name="conn")
     monkeypatch.setattr(md, "_get_connection", lambda target=None: conn)
@@ -80,9 +80,9 @@ def test_hot_swap_tool_is_gone_from_the_registry():
     an approval before 404ing. It must be absent from the module AND from the MCP
     registry — a tool a weak model can still see is a tool it will still call.
     """
+    from inference_aiops.mcp_server.server import mcp
+    from inference_aiops.mcp_server.tools import models as md
     from inference_aiops.ops import models as ops
-    from mcp_server.server import mcp
-    from mcp_server.tools import models as md
 
     assert not hasattr(md, "model_hot_swap")
     assert not hasattr(ops, "hot_swap_model")
@@ -99,7 +99,7 @@ def test_no_module_references_the_invented_hot_swap_path():
 
 @pytest.mark.unit
 def test_model_sleep_dry_run_does_not_mutate(monkeypatch):
-    from mcp_server.tools import models as md
+    from inference_aiops.mcp_server.tools import models as md
 
     conn = MagicMock(name="conn")
     conn.get_vllm.return_value = {"is_sleeping": False}
@@ -114,7 +114,7 @@ def test_model_sleep_dry_run_does_not_mutate(monkeypatch):
 
 @pytest.mark.unit
 def test_model_wake_dry_run_does_not_mutate(monkeypatch):
-    from mcp_server.tools import models as md
+    from inference_aiops.mcp_server.tools import models as md
 
     conn = MagicMock(name="conn")
     conn.get_vllm.return_value = {"is_sleeping": True}
@@ -128,7 +128,7 @@ def test_model_wake_dry_run_does_not_mutate(monkeypatch):
 
 @pytest.mark.unit
 def test_sleep_undo_wakes_only_what_it_put_to_sleep():
-    from mcp_server.tools import models as md
+    from inference_aiops.mcp_server.tools import models as md
 
     put_to_sleep = md._sleep_undo({"target": "gpu1"},
                                   {"priorState": {"wasSleeping": False}})
@@ -140,6 +140,6 @@ def test_sleep_undo_wakes_only_what_it_put_to_sleep():
 @pytest.mark.parametrize("prior", [True, None])
 def test_sleep_undo_declines_when_it_did_not_cause_the_sleep(prior):
     """Already-asleep or unknown => no descriptor; an undo must not invent a state."""
-    from mcp_server.tools import models as md
+    from inference_aiops.mcp_server.tools import models as md
 
     assert md._sleep_undo({"target": None}, {"priorState": {"wasSleeping": prior}}) is None

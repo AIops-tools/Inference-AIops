@@ -217,7 +217,7 @@ def test_preview_degrades_to_unknown_rather_than_inventing_a_blocker(outcome):
 @pytest.mark.parametrize("tool,kwargs", [("model_sleep", {"level": 1}), ("model_wake", {})])
 def test_both_previews_refuse_to_look_clear_without_sleep_mode(monkeypatch, tool, kwargs):
     """Preview and real call agree about capability, for sleep and wake alike."""
-    from mcp_server.tools import models as md
+    from inference_aiops.mcp_server.tools import models as md
 
     conn = MagicMock(name="conn")
     conn.get_vllm.side_effect = InferenceApiError("nope", status_code=404,

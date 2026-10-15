@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 import pytest
 from typer.testing import CliRunner
 
-# Kept in sync with mcp_server/server.py (the full registered tool surface).
+# Kept in sync with inference_aiops/mcp_server/server.py (the full registered tool surface).
 EXPECTED_TOOLS = {
     # metrics
     "request_metrics", "queue_depth", "kv_cache_stats",
@@ -52,9 +52,9 @@ def test_all_modules_import():
         "inference_aiops.cli.init", "inference_aiops.cli.secret", "inference_aiops.cli.serve",
         "inference_aiops.cli.metrics", "inference_aiops.cli.overview",
         "inference_aiops.cli.doctor",
-        "mcp_server.server", "mcp_server._shared",
-        "mcp_server.tools.metrics", "mcp_server.tools.serve",
-        "mcp_server.tools.engine",
+        "inference_aiops.mcp_server.server", "inference_aiops.mcp_server._shared",
+        "inference_aiops.mcp_server.tools.metrics", "inference_aiops.mcp_server.tools.serve",
+        "inference_aiops.mcp_server.tools.engine",
     ):
         importlib.import_module(name)
 
@@ -104,7 +104,7 @@ def test_cli_leaf_help_triggers_lazy_imports():
 
 @pytest.mark.unit
 def test_mcp_list_tools_exposes_expected_tools():
-    from mcp_server.server import mcp
+    from inference_aiops.mcp_server.server import mcp
 
     tools = asyncio.run(mcp.list_tools())
     names = {t.name for t in tools}
@@ -113,7 +113,7 @@ def test_mcp_list_tools_exposes_expected_tools():
 
 @pytest.mark.unit
 def test_every_mcp_tool_is_governed_by_harness():
-    from mcp_server import _shared
+    from inference_aiops.mcp_server import _shared
 
     tool_objs = _shared.mcp._tool_manager._tools
     assert EXPECTED_TOOLS <= set(tool_objs), "tool registry incomplete"
@@ -125,7 +125,7 @@ def test_every_mcp_tool_is_governed_by_harness():
 
 @pytest.mark.unit
 def test_write_tools_have_correct_risk_tiers():
-    from mcp_server.tools import serve as sv
+    from inference_aiops.mcp_server.tools import serve as sv
 
     assert sv.scale_replicas_up._risk_level == "medium"
     assert sv.scale_replicas_down._risk_level == "high"
@@ -238,7 +238,7 @@ def _apps(num=3):
 @pytest.mark.unit
 def test_scale_to_zero_captures_prior_and_records_undo(monkeypatch):
     import inference_aiops.governance.undo as undo_mod
-    from mcp_server.tools import serve as sv
+    from inference_aiops.mcp_server.tools import serve as sv
 
     conn = MagicMock(name="conn")
     conn.get_ray.return_value = _apps(num=3)
@@ -263,7 +263,7 @@ def test_scale_to_zero_captures_prior_and_records_undo(monkeypatch):
 
 @pytest.mark.unit
 def test_scale_to_zero_dry_run_does_not_mutate(monkeypatch):
-    from mcp_server.tools import serve as sv
+    from inference_aiops.mcp_server.tools import serve as sv
 
     conn = MagicMock(name="conn")
     conn.get_ray.return_value = _apps(num=4)
@@ -282,7 +282,7 @@ def test_cli_serve_scale_zero_dry_run_gates(monkeypatch):
     replica count — so a connection is required, but the scaling PUT must never
     fire.
     """
-    import mcp_server.tools.serve as gov_serve
+    import inference_aiops.mcp_server.tools.serve as gov_serve
     from inference_aiops.cli import app
 
     conn = MagicMock(name="conn")
@@ -324,7 +324,7 @@ def test_risk_level_agrees_with_read_write_docstring_tag():
     16 such mislabels line-wide once, so it is kept even though read-only mode
     (its original motivation) is gone.
     """
-    from mcp_server import server
+    from inference_aiops.mcp_server import server
 
     untagged, mismatched = [], []
     for name, tool in server.mcp._tool_manager._tools.items():

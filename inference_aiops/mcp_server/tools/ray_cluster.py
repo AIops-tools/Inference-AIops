@@ -7,8 +7,8 @@ risk=high with a dry_run preview.
 from typing import Optional
 
 from inference_aiops.governance import governed_tool
+from inference_aiops.mcp_server._shared import _get_connection, mcp, tool_errors
 from inference_aiops.ops import ray_cluster as ops
-from mcp_server._shared import _get_connection, mcp, tool_errors
 
 # ── reads ────────────────────────────────────────────────────────────────
 

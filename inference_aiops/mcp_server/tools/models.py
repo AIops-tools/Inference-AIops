@@ -20,8 +20,8 @@ as "clear to proceed" and cost an approval to learn otherwise.
 from typing import Any, Optional
 
 from inference_aiops.governance import governed_tool
+from inference_aiops.mcp_server._shared import _get_connection, mcp, tool_errors
 from inference_aiops.ops import models as ops
-from mcp_server._shared import _get_connection, mcp, tool_errors
 
 
 def _sleep_undo(params: dict[str, Any], result: Any) -> Optional[dict]:

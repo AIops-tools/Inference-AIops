@@ -60,7 +60,7 @@ def test_undeploy_puts_schema_without_the_target_app():
 def test_routing_policy_update_refuses_no_rest_endpoint(monkeypatch):
     """Ray Serve routing policy is a code-level decorator option, not REST-settable;
     the tool must refuse (teaching error) instead of PUTting to a 404 path."""
-    from mcp_server.tools import deploy as dp
+    from inference_aiops.mcp_server.tools import deploy as dp
 
     conn = MagicMock(name="conn")
     monkeypatch.setattr(dp, "_get_connection", lambda target=None: conn)
@@ -74,7 +74,7 @@ def test_routing_policy_update_refuses_no_rest_endpoint(monkeypatch):
 
 @pytest.mark.unit
 def test_deploy_write_tools_have_correct_risk_tiers():
-    from mcp_server.tools import deploy as dp
+    from inference_aiops.mcp_server.tools import deploy as dp
 
     assert dp.model_undeploy._risk_level == "high"
     assert dp.deployment_redeploy._risk_level == "high"
@@ -84,7 +84,7 @@ def test_deploy_write_tools_have_correct_risk_tiers():
 
 @pytest.mark.unit
 def test_model_undeploy_dry_run_does_not_delete(monkeypatch):
-    from mcp_server.tools import deploy as dp
+    from inference_aiops.mcp_server.tools import deploy as dp
 
     conn = MagicMock(name="conn")
     conn.get_ray.return_value = {"applications": {"app1": {}}}

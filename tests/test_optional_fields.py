@@ -167,7 +167,7 @@ def test_list_jobs_reports_a_failure_as_an_error_envelope():
 
 @pytest.mark.unit
 def test_undo_list_envelope_measures_truncation(monkeypatch):
-    from mcp_server.tools import undo as undo_tools
+    from inference_aiops.mcp_server.tools import undo as undo_tools
 
     rows = [
         {

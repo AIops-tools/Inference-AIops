@@ -71,7 +71,7 @@ def test_get_cluster_resources_gpuless_cluster_is_null_not_zero():
 
 @pytest.mark.unit
 def test_write_tools_have_correct_risk_tiers():
-    from mcp_server.tools import ray_cluster as rc
+    from inference_aiops.mcp_server.tools import ray_cluster as rc
 
     assert rc.replica_restart._risk_level == "high"
     assert rc.ray_job_cancel._risk_level == "medium"
@@ -83,7 +83,7 @@ def test_write_tools_have_correct_risk_tiers():
 
 @pytest.mark.unit
 def test_replica_restart_dry_run_does_not_call_backend(monkeypatch):
-    from mcp_server.tools import ray_cluster as rc
+    from inference_aiops.mcp_server.tools import ray_cluster as rc
 
     conn = MagicMock(name="conn")
     monkeypatch.setattr(rc, "_get_connection", lambda target=None: conn)

@@ -72,7 +72,7 @@ and vLLM endpoints. No post-install scripts or background services.
 ## Static Analysis
 
 ```bash
-uvx bandit -r inference_aiops/ mcp_server/
+uvx bandit -r inference_aiops/
 uv run ruff check .
 ```
 

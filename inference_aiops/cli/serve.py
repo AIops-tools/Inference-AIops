@@ -61,7 +61,7 @@ def serve_scale(
     dry_run: DryRunOption = False,
 ) -> None:
     """Scale a deployment to a target replica count."""
-    from mcp_server.tools import serve as gov
+    from inference_aiops.mcp_server.tools import serve as gov
 
     if dry_run:
         preview = gov.scale_replicas_up(
@@ -87,7 +87,7 @@ def serve_scale_zero(
     target: TargetOption = None, dry_run: DryRunOption = False,
 ) -> None:
     """Park a deployment at 0 replicas (dry-run + double confirm)."""
-    from mcp_server.tools import serve as gov
+    from inference_aiops.mcp_server.tools import serve as gov
 
     if dry_run:
         preview = gov.scale_to_zero(

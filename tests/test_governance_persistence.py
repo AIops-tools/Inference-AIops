@@ -140,7 +140,7 @@ def test_real_write_tool_persists_priorstate_undo(gov_home, monkeypatch):
     conn.get_ray.return_value = _apps(num=3)
     conn.put_ray.return_value = {}
 
-    from mcp_server.tools import serve as gov
+    from inference_aiops.mcp_server.tools import serve as gov
 
     monkeypatch.setattr(gov, "_get_connection", lambda target=None: conn)
     result = gov.scale_to_zero(application="app1", deployment="dep1")
